@@ -192,7 +192,7 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
 
   multiplayerRoomService.setEventListener(handleServiceEvent);
 
-  wss.on("connection", async (socket, request) => {
+  wss.on("connection", async (socket: WebSocket, request: IncomingMessage) => {
     try {
       const user = await authenticate(request);
 
@@ -208,7 +208,7 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
         },
       });
 
-      socket.on("message", (rawData) => {
+      socket.on("message", (rawData: Buffer) => {
         const context = contexts.get(socket);
 
         if (!context) {
