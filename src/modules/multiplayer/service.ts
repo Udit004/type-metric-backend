@@ -219,12 +219,16 @@ export class MultiplayerRoomService {
       throw new Error("Only the room host can start the race");
     }
 
-    if (room.status !== "waiting") {
+    if (room.status === "countdown" || room.status === "racing") {
       throw new Error("Race already started or finished");
     }
 
     if (room.participants.size < 2) {
       throw new Error("At least two players are required to start");
+    }
+
+    if (room.status === "finished") {
+      this.prepareRoomForNextRace(room);
     }
 
     room.status = "countdown";
@@ -263,6 +267,21 @@ export class MultiplayerRoomService {
 
     this.emitRoomState(room);
     return this.toSnapshot(room);
+  }
+
+  private prepareRoomForNextRace(room: InternalRoom): void {
+    if (room.finishedRoomExpiry) {
+      clearTimeout(room.finishedRoomExpiry);
+      room.finishedRoomExpiry = null;
+    }
+
+    room.promptText = getRandomPrompt();
+    room.startedAt = null;
+    room.endsAt = null;
+
+    room.participants.forEach((participant) => {
+      participant.progress = initialProgress();
+    });
   }
 
   updateProgress(roomId: string, userId: string, input: ProgressUpdateInput): RoomSnapshot {
