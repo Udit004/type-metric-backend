@@ -9,9 +9,7 @@ import {
   RoomSnapshot,
   RoomStatus,
 } from "./types.js";
-
-const DEFAULT_PROMPT =
-  "Speed is useful, but accuracy wins races. Keep your rhythm and trust your fingers.";
+import { getRandomPrompt } from "./constants/typingPrompts.js";
 
 const DEFAULT_DURATION_SECONDS = 60;
 const COUNTDOWN_SECONDS = 5;
@@ -85,7 +83,7 @@ export class MultiplayerRoomService {
       roomId,
       hostId: user.userId,
       status: "waiting",
-      promptText: promptText?.trim() || DEFAULT_PROMPT,
+      promptText: promptText?.trim() || getRandomPrompt(),
       durationSeconds: DEFAULT_DURATION_SECONDS,
       createdAt: now,
       startedAt: null,
