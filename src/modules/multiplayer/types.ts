@@ -33,6 +33,7 @@ export interface RaceResult {
   userId: string;
   name: string;
   rank: number;
+  score: number;
   typedCharacters: number;
   correctCharacters: number;
   mistakes: number;

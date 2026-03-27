@@ -16,6 +16,14 @@ const COUNTDOWN_SECONDS = 5;
 const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
 const FINISHED_ROOM_TTL_MS = 2 * 60 * 1000;
 
+const SCORE_WEIGHTS = {
+  wpm: 0.6,
+  accuracy: 0.3,
+  completion: 0.1,
+  mistakePenalty: 0.35,
+  finishBonus: 2,
+};
+
 interface InternalParticipant {
   userId: string;
   name: string;
@@ -61,6 +69,10 @@ function initialProgress() {
     wpm: 0,
     finishedAt: null,
   };
+}
+
+function roundToTwo(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -381,14 +393,38 @@ export class CoreRoomService {
   }
 
   protected buildResults(room: InternalRoom): RaceResult[] {
+    const promptLength = Math.max(1, room.promptText.length);
+
+    const scoreByUserId = new Map<string, number>();
+
+    for (const participant of room.participants.values()) {
+      const completionRatio = Math.min(1, participant.progress.typedCharacters / promptLength);
+      const completionScore = completionRatio * 100;
+      const rawScore =
+        participant.progress.wpm * SCORE_WEIGHTS.wpm +
+        participant.progress.accuracy * SCORE_WEIGHTS.accuracy +
+        completionScore * SCORE_WEIGHTS.completion -
+        participant.progress.mistakes * SCORE_WEIGHTS.mistakePenalty +
+        (participant.progress.finishedAt !== null ? SCORE_WEIGHTS.finishBonus : 0);
+
+      scoreByUserId.set(participant.userId, roundToTwo(Math.max(0, rawScore)));
+    }
+
     const ranked = Array.from(room.participants.values())
       .sort((a, b) => {
-        if (b.progress.typedCharacters !== a.progress.typedCharacters) {
-          return b.progress.typedCharacters - a.progress.typedCharacters;
+        const aScore = scoreByUserId.get(a.userId) ?? 0;
+        const bScore = scoreByUserId.get(b.userId) ?? 0;
+
+        if (bScore !== aScore) {
+          return bScore - aScore;
         }
 
         if (b.progress.accuracy !== a.progress.accuracy) {
           return b.progress.accuracy - a.progress.accuracy;
+        }
+
+        if (b.progress.wpm !== a.progress.wpm) {
+          return b.progress.wpm - a.progress.wpm;
         }
 
         const aFinished = a.progress.finishedAt ?? Number.MAX_SAFE_INTEGER;
@@ -404,6 +440,7 @@ export class CoreRoomService {
         userId: participant.userId,
         name: participant.name,
         rank: index + 1,
+        score: scoreByUserId.get(participant.userId) ?? 0,
         typedCharacters: participant.progress.typedCharacters,
         correctCharacters: participant.progress.correctCharacters,
         mistakes: participant.progress.mistakes,
