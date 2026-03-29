@@ -13,8 +13,6 @@ import { getRandomPrompt } from "../constants/typingPrompts.js";
 
 const DEFAULT_DURATION_SECONDS = 60;
 const COUNTDOWN_SECONDS = 5;
-const WAITING_ROOM_TTL_MS = 30 * 60 * 1000;
-const FINISHED_ROOM_TTL_MS = 2 * 60 * 1000;
 
 const SCORE_WEIGHTS = {
   wpm: 0.6,
@@ -121,10 +119,6 @@ export class CoreRoomService {
       isConnected: true,
       progress: initialProgress(),
     });
-
-    room.waitingRoomExpiry = setTimeout(() => {
-      this.closeRoomInternal(room.roomId, "waiting_timeout");
-    }, WAITING_ROOM_TTL_MS);
 
     this.rooms.set(roomId, room);
     this.emitRoomState(room);
@@ -263,6 +257,7 @@ export class CoreRoomService {
 
   removeUserFromRoom(roomId: string, userId: string): RoomSnapshot | null {
     const room = this.requireRoom(roomId);
+    const isHostLeaving = room.hostId === userId;
 
     room.participants.delete(userId);
 
@@ -271,12 +266,9 @@ export class CoreRoomService {
       return null;
     }
 
-    if (room.hostId === userId) {
-      const nextHost = room.participants.values().next().value;
-
-      if (nextHost) {
-        room.hostId = nextHost.userId;
-      }
+    if (isHostLeaving) {
+      this.closeRoomInternal(roomId, "host_left");
+      return null;
     }
 
     this.emitRoomState(room);
@@ -301,6 +293,11 @@ export class CoreRoomService {
       const participant = room.participants.get(userId);
 
       if (!participant) {
+        continue;
+      }
+
+      if (room.hostId === userId) {
+        this.closeRoomInternal(room.roomId, "host_disconnected");
         continue;
       }
 
@@ -572,9 +569,7 @@ export class CoreRoomService {
 
     this.emitRoomState(room);
 
-    room.finishedRoomExpiry = setTimeout(() => {
-      this.closeRoomInternal(room.roomId, "finished_ttl");
-    }, FINISHED_ROOM_TTL_MS);
+    room.finishedRoomExpiry = null;
   }
 
   protected emitRoomState(room: InternalRoom): void {
