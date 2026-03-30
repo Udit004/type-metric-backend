@@ -21,7 +21,11 @@ import {
   cacheRoomSnapshot,
   removeCachedRoomSnapshot,
 } from "../persistence/room-cache.service.js";
-import { markRoomClosed, upsertRoomState } from "../persistence/room-persistence.service.js";
+import {
+  appendFinishedRace,
+  markRoomClosed,
+  upsertRoomState,
+} from "../persistence/room-persistence.service.js";
 import { InternalProgress, InternalRoom } from "./internal-types.js";
 import { toRoomSnapshot } from "./snapshot.js";
 
@@ -367,6 +371,8 @@ export class CoreRoomService {
 
     this.emitRoomState(room);
 
+    this.syncFinishedRacePersistence(room, endedAt, results);
+
     room.finishedRoomExpiry = null;
   }
 
@@ -400,6 +406,16 @@ export class CoreRoomService {
       removeCachedRoomSnapshot(roomId),
     ]).catch((error) => {
       console.error(`Failed to persist room close for ${roomId}`, error);
+    });
+  }
+
+  private syncFinishedRacePersistence(
+    room: InternalRoom,
+    endedAt: number,
+    results: ReturnType<CoreRoomService["buildResults"]>
+  ): void {
+    void appendFinishedRace(room, endedAt, results).catch((error) => {
+      console.error(`Failed to append finished race for ${room.roomId}`, error);
     });
   }
 }

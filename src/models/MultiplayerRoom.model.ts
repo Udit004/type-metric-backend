@@ -19,8 +19,33 @@ export interface IMultiplayerRoom {
   endedAt: Date | null;
   closedReason: string | null;
   participants: IRoomParticipant[];
+  raceCount: number;
+  raceHistory: IRaceHistoryEntry[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface IRaceResultEntry {
+  userId: string;
+  name: string;
+  rank: number;
+  score: number;
+  typedCharacters: number;
+  correctCharacters: number;
+  mistakes: number;
+  accuracy: number;
+  wpm: number;
+  finishedAt: number | null;
+}
+
+export interface IRaceHistoryEntry {
+  raceNumber: number;
+  promptText: string;
+  durationSeconds: number;
+  startedAt: Date | null;
+  endedAt: Date;
+  winnerUserId: string | null;
+  results: IRaceResultEntry[];
 }
 
 type MultiplayerRoomModel = Model<IMultiplayerRoom>;
@@ -46,6 +71,100 @@ const participantSchema = new Schema<IRoomParticipant>(
       type: Boolean,
       required: true,
       default: true,
+    },
+  },
+  { _id: false }
+);
+
+const raceResultSchema = new Schema<IRaceResultEntry>(
+  {
+    userId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    rank: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    score: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    typedCharacters: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    correctCharacters: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    mistakes: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    accuracy: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 100,
+    },
+    wpm: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    finishedAt: {
+      type: Number,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
+const raceHistorySchema = new Schema<IRaceHistoryEntry>(
+  {
+    raceNumber: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    promptText: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    durationSeconds: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    startedAt: {
+      type: Date,
+      default: null,
+    },
+    endedAt: {
+      type: Date,
+      required: true,
+    },
+    winnerUserId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    results: {
+      type: [raceResultSchema],
+      default: [],
     },
   },
   { _id: false }
@@ -99,6 +218,16 @@ const multiplayerRoomSchema = new Schema<IMultiplayerRoom, MultiplayerRoomModel>
     },
     participants: {
       type: [participantSchema],
+      default: [],
+    },
+    raceCount: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    raceHistory: {
+      type: [raceHistorySchema],
       default: [],
     },
   },

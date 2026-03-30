@@ -1,4 +1,9 @@
-import { getRedisClient } from "../../../config/redis.js";
+import {
+  connectRedis,
+  getRedisClient,
+  isRedisRecoverableError,
+  reconnectRedis,
+} from "../../../config/redis.js";
 import { RoomSnapshot } from "../types.js";
 
 const ROOM_CACHE_PREFIX = "multiplayer:room:";
@@ -8,29 +13,61 @@ function buildRoomKey(roomId: string): string {
   return `${ROOM_CACHE_PREFIX}${roomId}`;
 }
 
+async function executeCacheOperation<T>(
+  operationName: string,
+  operation: () => Promise<T>
+): Promise<T | null> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isRedisRecoverableError(error)) {
+      console.warn(`Redis cache ${operationName} failed`, error);
+      return null;
+    }
+
+    try {
+      await reconnectRedis(true);
+      return await operation();
+    } catch (retryError) {
+      console.warn(`Redis cache ${operationName} retry failed`, retryError);
+      return null;
+    }
+  }
+}
+
 export async function cacheRoomSnapshot(
   room: RoomSnapshot,
   ttlSeconds = DEFAULT_ROOM_TTL_SECONDS
 ): Promise<void> {
-  const redis = getRedisClient();
+  await connectRedis();
 
-  if (!redis?.isOpen) {
-    return;
-  }
+  await executeCacheOperation("set", async () => {
+    const redis = getRedisClient();
 
-  await redis.set(buildRoomKey(room.roomId), JSON.stringify(room), {
-    EX: ttlSeconds,
+    if (!redis?.isOpen) {
+      return null;
+    }
+
+    await redis.set(buildRoomKey(room.roomId), JSON.stringify(room), {
+      EX: ttlSeconds,
+    });
+
+    return null;
   });
 }
 
 export async function getCachedRoomSnapshot(roomId: string): Promise<RoomSnapshot | null> {
-  const redis = getRedisClient();
+  await connectRedis();
 
-  if (!redis?.isOpen) {
-    return null;
-  }
+  const value = await executeCacheOperation("get", async () => {
+    const redis = getRedisClient();
 
-  const value = await redis.get(buildRoomKey(roomId));
+    if (!redis?.isOpen) {
+      return null;
+    }
+
+    return redis.get(buildRoomKey(roomId));
+  });
 
   if (!value) {
     return null;
@@ -44,11 +81,16 @@ export async function getCachedRoomSnapshot(roomId: string): Promise<RoomSnapsho
 }
 
 export async function removeCachedRoomSnapshot(roomId: string): Promise<void> {
-  const redis = getRedisClient();
+  await connectRedis();
 
-  if (!redis?.isOpen) {
-    return;
-  }
+  await executeCacheOperation("del", async () => {
+    const redis = getRedisClient();
 
-  await redis.del(buildRoomKey(roomId));
+    if (!redis?.isOpen) {
+      return null;
+    }
+
+    await redis.del(buildRoomKey(roomId));
+    return null;
+  });
 }
