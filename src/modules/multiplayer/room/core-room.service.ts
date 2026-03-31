@@ -31,6 +31,8 @@ import { toRoomSnapshot } from "./snapshot.js";
 
 const DEFAULT_DURATION_SECONDS = 60;
 const COUNTDOWN_SECONDS = 5;
+const MAX_CHAT_MESSAGES = 100;
+const MAX_CHAT_MESSAGE_LENGTH = 280;
 
 function createRoomId(): string {
   return crypto.randomBytes(4).toString("hex");
@@ -79,6 +81,7 @@ export class CoreRoomService {
       startedAt: null,
       endsAt: null,
       participants: new Map(),
+      chatMessages: [],
       countdownInterval: null,
       raceTickInterval: null,
       raceTimeout: null,
@@ -263,6 +266,50 @@ export class CoreRoomService {
       participant.isConnected = false;
       this.emitRoomState(room);
     }
+  }
+
+  sendChatMessage(roomId: string, user: MultiplayerUser, text: string): RoomSnapshot {
+    const room = this.requireRoom(roomId);
+    const participant = room.participants.get(user.userId);
+
+    if (!participant) {
+      throw new Error("You are not part of this room");
+    }
+
+    const normalizedText = text.trim();
+
+    if (normalizedText.length === 0) {
+      throw new Error("Message cannot be empty");
+    }
+
+    if (normalizedText.length > MAX_CHAT_MESSAGE_LENGTH) {
+      throw new Error(`Message cannot exceed ${MAX_CHAT_MESSAGE_LENGTH} characters`);
+    }
+
+    const message = {
+      id: crypto.randomUUID(),
+      userId: user.userId,
+      userName: participant.name,
+      text: normalizedText,
+      sentAt: Date.now(),
+    };
+
+    room.chatMessages.push(message);
+
+    if (room.chatMessages.length > MAX_CHAT_MESSAGES) {
+      room.chatMessages.splice(0, room.chatMessages.length - MAX_CHAT_MESSAGES);
+    }
+
+    const roomSnapshot = this.toSnapshot(room);
+    this.syncRoomStatePersistence(room, roomSnapshot);
+
+    this.emit({
+      type: "chat:message",
+      roomId: room.roomId,
+      message,
+    });
+
+    return roomSnapshot;
   }
 
   // ============ Protected helper methods ============

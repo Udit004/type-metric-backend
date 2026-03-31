@@ -27,6 +27,15 @@ export interface RoomSnapshot {
   startedAt: number | null;
   endsAt: number | null;
   participants: PlayerSnapshot[];
+  chatMessages: ChatMessage[];
+}
+
+export interface ChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  sentAt: number;
 }
 
 export interface RaceResult {
@@ -89,4 +98,9 @@ export type MultiplayerServerEvent =
       type: "room:closed";
       roomId: string;
       reason: string;
+    }
+  | {
+      type: "chat:message";
+      roomId: string;
+      message: ChatMessage;
     };

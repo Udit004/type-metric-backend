@@ -17,6 +17,14 @@ export interface InternalParticipant {
   progress: InternalProgress;
 }
 
+export interface InternalChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  sentAt: number;
+}
+
 export interface InternalRoom {
   roomId: string;
   hostId: string;
@@ -27,6 +35,7 @@ export interface InternalRoom {
   startedAt: number | null;
   endsAt: number | null;
   participants: Map<string, InternalParticipant>;
+  chatMessages: InternalChatMessage[];
   countdownInterval: NodeJS.Timeout | null;
   raceTickInterval: NodeJS.Timeout | null;
   raceTimeout: NodeJS.Timeout | null;

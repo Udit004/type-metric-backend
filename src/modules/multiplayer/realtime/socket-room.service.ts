@@ -1,4 +1,4 @@
-import { ProgressUpdateInput, RoomSnapshot } from "../types.js";
+import { MultiplayerUser, ProgressUpdateInput, RoomSnapshot } from "../types.js";
 import { CoreRoomService } from "../room/core-room.service.js";
 
 /**
@@ -27,6 +27,10 @@ export class SocketRoomService {
 
   markDisconnected(userId: string): void {
     this.core.markUserDisconnected(userId);
+  }
+
+  sendChatMessage(roomId: string, user: MultiplayerUser, text: string): RoomSnapshot {
+    return this.core.sendChatMessage(roomId, user, text);
   }
 
   setEventListener(listener: (event: any) => void): void {

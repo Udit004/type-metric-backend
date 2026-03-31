@@ -139,6 +139,27 @@ function parseCreatePayload(payload: unknown): { promptText?: string } {
   return {};
 }
 
+function parseChatPayload(payload: unknown): { roomId: string; text: string } {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required");
+  }
+
+  const body = payload as { roomId?: unknown; text?: unknown };
+
+  if (!body.roomId || typeof body.roomId !== "string") {
+    throw new Error("roomId is required");
+  }
+
+  if (typeof body.text !== "string") {
+    throw new Error("text is required");
+  }
+
+  return {
+    roomId: body.roomId,
+    text: body.text,
+  };
+}
+
 export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({
     server,
@@ -178,6 +199,14 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
 
     if (event.type === "room:state") {
       broadcastToRoom(event.room.roomId, {
+        type: event.type,
+        payload: event,
+      });
+      return;
+    }
+
+    if (event.type === "chat:message") {
+      broadcastToRoom(event.roomId, {
         type: event.type,
         payload: event,
       });
@@ -312,6 +341,17 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
                   room,
                 },
               });
+              break;
+            }
+            case "chat:send": {
+              const { roomId, text } = parseChatPayload(parsed.payload);
+
+              if (!multiplayerRoomService.isParticipant(roomId, context.user.userId)) {
+                throw new Error("You are not part of this room");
+              }
+
+              multiplayerRoomService.sendChatMessage(roomId, context.user, text);
+              context.roomId = roomId;
               break;
             }
             default:

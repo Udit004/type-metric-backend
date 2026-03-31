@@ -27,6 +27,7 @@ export const multiplayerRoomService = {
   leaveRoom: socketService.leaveRoom.bind(socketService),
   reconnectUser: socketService.reconnectUser.bind(socketService),
   markDisconnected: socketService.markDisconnected.bind(socketService),
+  sendChatMessage: socketService.sendChatMessage.bind(socketService),
   
   // Event listener management
   setEventListener: coreService.setEventListener.bind(coreService),

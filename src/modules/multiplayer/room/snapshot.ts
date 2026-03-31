@@ -24,5 +24,12 @@ export function toRoomSnapshot(room: InternalRoom): RoomSnapshot {
     startedAt: room.startedAt,
     endsAt: room.endsAt,
     participants,
+    chatMessages: room.chatMessages.map((message) => ({
+      id: message.id,
+      userId: message.userId,
+      userName: message.userName,
+      text: message.text,
+      sentAt: message.sentAt,
+    })),
   };
 }
