@@ -93,6 +93,12 @@ const typingSessionSchema = new Schema<ITypingSession, TypingSessionModel>(
 );
 
 typingSessionSchema.index({ user: 1, createdAt: -1 });
+typingSessionSchema.index({
+  user: 1,
+  wpm: -1,
+  accuracy: -1,
+  createdAt: -1,
+});
 
 const TypingSession = model<ITypingSession, TypingSessionModel>(
   "TypingSession",

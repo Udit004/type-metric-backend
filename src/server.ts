@@ -4,6 +4,10 @@ import { createServer } from "http";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
+import {
+  closeLeaderboardQueueConnections,
+  registerLeaderboardRepeatableJobs,
+} from "./modules/leaderboard/queue.js";
 import { attachMultiplayerGateway } from "./modules/multiplayer/gateway.js";
 
 dotenv.config();
@@ -14,6 +18,7 @@ async function startServer(): Promise<void> {
   try {
     await connectDB();
     await connectRedis();
+    await registerLeaderboardRepeatableJobs();
     const httpServer = createServer(app);
 
     attachMultiplayerGateway(httpServer);
@@ -29,11 +34,13 @@ async function startServer(): Promise<void> {
 }
 
 process.on("SIGINT", async () => {
+  await closeLeaderboardQueueConnections();
   await disconnectRedis();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
+  await closeLeaderboardQueueConnections();
   await disconnectRedis();
   process.exit(0);
 });

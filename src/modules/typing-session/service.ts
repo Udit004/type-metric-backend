@@ -1,6 +1,7 @@
 import TypingSession, {
   CompletionReason,
 } from "../../models/TypingSession.model.js";
+import { enqueueLeaderboardRefresh } from "../leaderboard/queue.js";
 
 export interface CreateTypingSessionInput {
   userId: string;
@@ -44,6 +45,15 @@ export async function createTypingSession(
     durationSeconds: payload.durationSeconds,
     completionReason: payload.completionReason,
   });
+
+  try {
+    await Promise.all([
+      enqueueLeaderboardRefresh("solo"),
+      enqueueLeaderboardRefresh("combined"),
+    ]);
+  } catch (error) {
+    console.error("Failed to enqueue leaderboard refresh after typing session", error);
+  }
 
   return {
     id: String(session._id),
