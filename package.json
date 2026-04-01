@@ -20,6 +20,7 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "livekit-server-sdk": "^2.15.0",
     "mongoose": "^9.3.3",
     "redis": "^5.11.0",
     "ws": "^8.18.0"
