@@ -160,6 +160,27 @@ function parseChatPayload(payload: unknown): { roomId: string; text: string } {
   };
 }
 
+function parseChatTypingPayload(payload: unknown): { roomId: string; isTyping: boolean } {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required");
+  }
+
+  const body = payload as { roomId?: unknown; isTyping?: unknown };
+
+  if (!body.roomId || typeof body.roomId !== "string") {
+    throw new Error("roomId is required");
+  }
+
+  if (typeof body.isTyping !== "boolean") {
+    throw new Error("isTyping is required");
+  }
+
+  return {
+    roomId: body.roomId,
+    isTyping: body.isTyping,
+  };
+}
+
 export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({
     server,
@@ -351,6 +372,17 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
               }
 
               multiplayerRoomService.sendChatMessage(roomId, context.user, text);
+              context.roomId = roomId;
+              break;
+            }
+            case "chat:typing": {
+              const { roomId, isTyping } = parseChatTypingPayload(parsed.payload);
+
+              if (!multiplayerRoomService.isParticipant(roomId, context.user.userId)) {
+                throw new Error("You are not part of this room");
+              }
+
+              multiplayerRoomService.sendChatTyping(roomId, context.user, isTyping);
               context.roomId = roomId;
               break;
             }

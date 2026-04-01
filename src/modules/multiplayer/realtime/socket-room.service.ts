@@ -33,6 +33,10 @@ export class SocketRoomService {
     return this.core.sendChatMessage(roomId, user, text);
   }
 
+  sendChatTyping(roomId: string, user: MultiplayerUser, isTyping: boolean): void {
+    this.core.sendChatTyping(roomId, user, isTyping);
+  }
+
   setEventListener(listener: (event: any) => void): void {
     this.core.setEventListener(listener);
   }

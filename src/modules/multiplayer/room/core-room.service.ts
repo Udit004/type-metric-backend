@@ -229,8 +229,24 @@ export class CoreRoomService {
     }
 
     if (isHostLeaving) {
-      this.closeRoomInternal(roomId, "host_left");
-      return null;
+      // Transfer host to the oldest remaining participant (first to join)
+      let oldestParticipant = Array.from(room.participants.values())[0];
+      
+      for (const participant of room.participants.values()) {
+        if (participant.joinedAt < oldestParticipant.joinedAt) {
+          oldestParticipant = participant;
+        }
+      }
+
+      room.hostId = oldestParticipant.userId;
+
+      // Emit host change notification
+      this.emit({
+        type: "room:host-changed",
+        roomId: room.roomId,
+        newHostId: oldestParticipant.userId,
+        newHostName: oldestParticipant.name,
+      });
     }
 
     this.emitRoomState(room);
@@ -259,7 +275,33 @@ export class CoreRoomService {
       }
 
       if (room.hostId === userId) {
-        this.closeRoomInternal(room.roomId, "host_disconnected");
+        // If only the host is in the room, close it
+        if (room.participants.size === 1) {
+          this.closeRoomInternal(room.roomId, "empty_room");
+          continue;
+        }
+
+        // Otherwise, transfer host to oldest remaining participant
+        let oldestParticipant = Array.from(room.participants.values())[0];
+
+        for (const otherParticipant of room.participants.values()) {
+          if (otherParticipant.joinedAt < oldestParticipant.joinedAt) {
+            oldestParticipant = otherParticipant;
+          }
+        }
+
+        room.hostId = oldestParticipant.userId;
+
+        // Emit host change notification
+        this.emit({
+          type: "room:host-changed",
+          roomId: room.roomId,
+          newHostId: oldestParticipant.userId,
+          newHostName: oldestParticipant.name,
+        });
+
+        participant.isConnected = false;
+        this.emitRoomState(room);
         continue;
       }
 
@@ -310,6 +352,23 @@ export class CoreRoomService {
     });
 
     return roomSnapshot;
+  }
+
+  sendChatTyping(roomId: string, user: MultiplayerUser, isTyping: boolean): void {
+    const room = this.requireRoom(roomId);
+    const participant = room.participants.get(user.userId);
+
+    if (!participant) {
+      throw new Error("You are not part of this room");
+    }
+
+    this.emit({
+      type: "chat:typing",
+      roomId: room.roomId,
+      userId: user.userId,
+      userName: participant.name,
+      isTyping,
+    });
   }
 
   // ============ Protected helper methods ============

@@ -103,4 +103,17 @@ export type MultiplayerServerEvent =
       type: "chat:message";
       roomId: string;
       message: ChatMessage;
+    }
+  | {
+      type: "chat:typing";
+      roomId: string;
+      userId: string;
+      userName: string;
+      isTyping: boolean;
+    }
+  | {
+      type: "room:host-changed";
+      roomId: string;
+      newHostId: string;
+      newHostName: string;
     };
