@@ -13,6 +13,10 @@ export class SocketRoomService {
     return this.core.startRaceInRoom(roomId, userId);
   }
 
+  returnToLobby(roomId: string, userId: string): RoomSnapshot {
+    return this.core.returnRoomToLobby(roomId, userId);
+  }
+
   updateProgress(roomId: string, userId: string, input: ProgressUpdateInput): RoomSnapshot {
     return this.core.updatePlayerProgress(roomId, userId, input);
   }

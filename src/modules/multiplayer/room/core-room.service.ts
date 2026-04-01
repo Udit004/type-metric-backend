@@ -31,6 +31,8 @@ import { toRoomSnapshot } from "./snapshot.js";
 
 const DEFAULT_DURATION_SECONDS = 60;
 const COUNTDOWN_SECONDS = 5;
+const RESULT_SCREEN_SECONDS = 60;
+const HOST_RECONNECT_GRACE_MS = 15000;
 const MAX_CHAT_MESSAGES = 100;
 const MAX_CHAT_MESSAGE_LENGTH = 280;
 
@@ -119,6 +121,7 @@ export class CoreRoomService {
     const existing = room.participants.get(user.userId);
 
     if (existing) {
+      clearWaitingRoomExpiry(room);
       existing.isConnected = true;
       existing.name = user.name;
       this.emitRoomState(room);
@@ -182,6 +185,21 @@ export class CoreRoomService {
     );
 
     this.emitRoomState(room);
+    return this.toSnapshot(room);
+  }
+
+  returnRoomToLobby(roomId: string, userId: string): RoomSnapshot {
+    const room = this.requireRoom(roomId);
+
+    if (room.hostId !== userId) {
+      throw new Error("Only the room host can return players to lobby");
+    }
+
+    if (room.status !== "finished") {
+      throw new Error("Lobby return is only available after race completion");
+    }
+
+    this.returnRoomToLobbyInternal(room);
     return this.toSnapshot(room);
   }
 
@@ -261,6 +279,7 @@ export class CoreRoomService {
       throw new Error("You are not part of this room");
     }
 
+    clearWaitingRoomExpiry(room);
     participant.isConnected = true;
     this.emitRoomState(room);
     return this.toSnapshot(room);
@@ -275,9 +294,29 @@ export class CoreRoomService {
       }
 
       if (room.hostId === userId) {
-        // If only the host is in the room, close it
+        // If only the host is in the room, keep a short grace period for reconnects
+        // (navigation/reload/strict-mode socket cycles) before closing.
         if (room.participants.size === 1) {
-          this.closeRoomInternal(room.roomId, "empty_room");
+          participant.isConnected = false;
+          clearWaitingRoomExpiry(room);
+
+          room.waitingRoomExpiry = setTimeout(() => {
+            const currentRoom = this.rooms.get(room.roomId);
+
+            if (!currentRoom) {
+              return;
+            }
+
+            const hostParticipant = currentRoom.participants.get(userId);
+            const isStillSolo = currentRoom.participants.size === 1;
+            const isStillDisconnected = Boolean(hostParticipant && !hostParticipant.isConnected);
+
+            if (isStillSolo && isStillDisconnected) {
+              this.closeRoomInternal(currentRoom.roomId, "empty_room");
+            }
+          }, HOST_RECONNECT_GRACE_MS);
+
+          this.emitRoomState(room);
           continue;
         }
 
@@ -479,7 +518,20 @@ export class CoreRoomService {
 
     this.syncFinishedRacePersistence(room, endedAt, results);
 
-    room.finishedRoomExpiry = null;
+    clearFinishedRoomExpiry(room);
+    room.finishedRoomExpiry = setTimeout(() => {
+      this.returnRoomToLobbyInternal(room);
+    }, RESULT_SCREEN_SECONDS * 1000);
+  }
+
+  private returnRoomToLobbyInternal(room: InternalRoom): void {
+    if (room.status !== "finished") {
+      return;
+    }
+
+    this.prepareRoomForNextRace(room);
+    room.status = "waiting";
+    this.emitRoomState(room);
   }
 
   protected emitRoomState(room: InternalRoom): void {

@@ -23,6 +23,7 @@ export const multiplayerRoomService = {
   
   // WebSocket operations (Real-time)
   startRace: socketService.startRace.bind(socketService),
+  returnToLobby: socketService.returnToLobby.bind(socketService),
   updateProgress: socketService.updateProgress.bind(socketService),
   leaveRoom: socketService.leaveRoom.bind(socketService),
   reconnectUser: socketService.reconnectUser.bind(socketService),

@@ -335,6 +335,23 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
               });
               break;
             }
+            case "room:return-lobby": {
+              const activeRoomId = context.roomId;
+
+              if (!activeRoomId) {
+                throw new Error("Not in a room");
+              }
+
+              const room = multiplayerRoomService.returnToLobby(activeRoomId, context.user.userId);
+
+              send(socket, {
+                type: "room:return-lobby:accepted",
+                payload: {
+                  room,
+                },
+              });
+              break;
+            }
             case "race:progress": {
               const { roomId, progress } = parseProgress(parsed.payload);
               const room = multiplayerRoomService.updateProgress(
