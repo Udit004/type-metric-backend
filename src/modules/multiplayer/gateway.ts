@@ -1,8 +1,10 @@
 import { IncomingMessage, Server as HttpServer } from "http";
 import jwt, { JwtPayload } from "jsonwebtoken";
+import { Types } from "mongoose";
 import { URL } from "url";
 import { WebSocket, WebSocketServer } from "ws";
 
+import Friendship from "../../models/Friendship.model.js";
 import User from "../../models/User.model.js";
 import { multiplayerRoomService } from "./service.js";
 import { MultiplayerServerEvent, MultiplayerUser, ProgressUpdateInput } from "./types.js";
@@ -15,6 +17,14 @@ interface WsClientMessage {
 interface SocketContext {
   user: MultiplayerUser;
   roomId: string | null;
+}
+
+interface FriendPlayRequestPayload {
+  targetUserId: string;
+}
+
+interface FriendRoomInvitePayload extends FriendPlayRequestPayload {
+  roomId: string;
 }
 
 function getJwtSecret(): string {
@@ -181,6 +191,47 @@ function parseChatTypingPayload(payload: unknown): { roomId: string; isTyping: b
   };
 }
 
+function parseFriendPlayRequestPayload(payload: unknown): FriendPlayRequestPayload {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required");
+  }
+
+  const body = payload as { targetUserId?: unknown };
+
+  if (typeof body.targetUserId !== "string" || body.targetUserId.trim().length === 0) {
+    throw new Error("targetUserId is required");
+  }
+
+  return {
+    targetUserId: body.targetUserId,
+  };
+}
+
+function parseFriendRoomInvitePayload(payload: unknown): FriendRoomInvitePayload {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required");
+  }
+
+  const body = payload as { targetUserId?: unknown; roomId?: unknown };
+
+  if (typeof body.targetUserId !== "string" || body.targetUserId.trim().length === 0) {
+    throw new Error("targetUserId is required");
+  }
+
+  if (typeof body.roomId !== "string" || body.roomId.trim().length === 0) {
+    throw new Error("roomId is required");
+  }
+
+  return {
+    targetUserId: body.targetUserId,
+    roomId: body.roomId,
+  };
+}
+
+function buildPairKey(userIdA: string, userIdB: string): string {
+  return [userIdA, userIdB].sort().join(":");
+}
+
 export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({
     server,
@@ -188,6 +239,55 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
   });
 
   const contexts = new Map<WebSocket, SocketContext>();
+
+  const sendToUser = (userId: string, message: unknown): void => {
+    contexts.forEach((context, socket) => {
+      if (context.user.userId === userId) {
+        send(socket, message);
+      }
+    });
+  };
+
+  const isUserOnline = (userId: string): boolean => {
+    for (const [socket, context] of contexts.entries()) {
+      if (context.user.userId === userId && isOpenSocket(socket)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const getAcceptedFriendIds = async (userId: string): Promise<string[]> => {
+    const userObjectId = new Types.ObjectId(userId);
+    const friendships = await Friendship.collection
+      .find({
+        status: "accepted",
+        $or: [{ requester: userObjectId }, { recipient: userObjectId }],
+      })
+      .project({ requester: 1, recipient: 1 })
+      .toArray();
+
+    return friendships.map((friendship) =>
+      String(friendship.requester) === userId
+        ? String(friendship.recipient)
+        : String(friendship.requester)
+    );
+  };
+
+  const notifyFriendsPresence = async (userId: string, isOnline: boolean): Promise<void> => {
+    const friendIds = await getAcceptedFriendIds(userId);
+
+    friendIds.forEach((friendId) => {
+      sendToUser(friendId, {
+        type: "notification:friend-presence",
+        payload: {
+          userId,
+          isOnline,
+        },
+      });
+    });
+  };
 
   const broadcastToRoom = (roomId: string, message: unknown): void => {
     contexts.forEach((context, socket) => {
@@ -251,12 +351,24 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
         roomId: null,
       });
 
+      const acceptedFriendIds = await getAcceptedFriendIds(user.userId);
+      const onlineFriendIds = acceptedFriendIds.filter((friendId) => isUserOnline(friendId));
+
       send(socket, {
         type: "connection:ready",
         payload: {
           user,
         },
       });
+
+      send(socket, {
+        type: "notification:bootstrap",
+        payload: {
+          onlineFriendIds,
+        },
+      });
+
+      await notifyFriendsPresence(user.userId, true);
 
       socket.on("message", (rawData: Buffer) => {
         const context = contexts.get(socket);
@@ -403,6 +515,98 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
               context.roomId = roomId;
               break;
             }
+            case "friend:play-request": {
+              void (async () => {
+                const { targetUserId } = parseFriendPlayRequestPayload(parsed.payload);
+
+                if (targetUserId === context.user.userId) {
+                  throw new Error("You cannot send a play request to yourself");
+                }
+
+                const friendship = await Friendship.collection.findOne({
+                  pairKey: buildPairKey(context.user.userId, targetUserId),
+                  status: "accepted",
+                });
+
+                if (!friendship) {
+                  throw new Error("You can only send play requests to friends");
+                }
+
+                if (!isUserOnline(targetUserId)) {
+                  throw new Error("Friend is offline");
+                }
+
+                sendToUser(targetUserId, {
+                  type: "notification:friend-play-request",
+                  payload: {
+                    senderUserId: context.user.userId,
+                    senderName: context.user.name,
+                    sentAt: Date.now(),
+                  },
+                });
+
+                send(socket, {
+                  type: "notification:friend-play-request:sent",
+                  payload: {
+                    targetUserId,
+                  },
+                });
+              })().catch((error) => {
+                const message =
+                  error instanceof Error ? error.message : "Failed to send play request";
+                sendError(socket, "BAD_REQUEST", message);
+              });
+              break;
+            }
+            case "friend:room-invite": {
+              void (async () => {
+                const { targetUserId, roomId } = parseFriendRoomInvitePayload(parsed.payload);
+
+                if (targetUserId === context.user.userId) {
+                  throw new Error("You cannot invite yourself");
+                }
+
+                if (!multiplayerRoomService.isParticipant(roomId, context.user.userId)) {
+                  throw new Error("You are not part of this room");
+                }
+
+                const friendship = await Friendship.collection.findOne({
+                  pairKey: buildPairKey(context.user.userId, targetUserId),
+                  status: "accepted",
+                });
+
+                if (!friendship) {
+                  throw new Error("You can only invite friends");
+                }
+
+                if (!isUserOnline(targetUserId)) {
+                  throw new Error("Friend is offline");
+                }
+
+                sendToUser(targetUserId, {
+                  type: "notification:friend-room-invite",
+                  payload: {
+                    senderUserId: context.user.userId,
+                    senderName: context.user.name,
+                    roomId,
+                    sentAt: Date.now(),
+                  },
+                });
+
+                send(socket, {
+                  type: "notification:friend-room-invite:sent",
+                  payload: {
+                    targetUserId,
+                    roomId,
+                  },
+                });
+              })().catch((error) => {
+                const message =
+                  error instanceof Error ? error.message : "Failed to send room invite";
+                sendError(socket, "BAD_REQUEST", message);
+              });
+              break;
+            }
             default:
               throw new Error(`Unsupported event type: ${parsed.type}`);
           }
@@ -421,6 +625,15 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
 
         multiplayerRoomService.markDisconnected(context.user.userId);
         contexts.delete(socket);
+
+        if (!isUserOnline(context.user.userId)) {
+          void notifyFriendsPresence(context.user.userId, false).catch((error) => {
+            console.error(
+              `Failed to notify offline presence for ${context.user.userId}`,
+              error
+            );
+          });
+        }
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed";

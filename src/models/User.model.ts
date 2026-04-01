@@ -5,6 +5,11 @@ export interface IUser {
 	name: string;
 	email: string;
 	password: string;
+	bio: string;
+	tagline: string;
+	country: string;
+	favoriteMode: "solo" | "multiplayer" | "hybrid";
+	avatarColor: string;
 }
 
 interface IUserMethods {
@@ -32,6 +37,39 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
 			type: String,
 			required: true,
 			minlength: 6,
+		},
+		bio: {
+			type: String,
+			required: true,
+			default: "",
+			maxlength: 220,
+			trim: true,
+		},
+		tagline: {
+			type: String,
+			required: true,
+			default: "",
+			maxlength: 80,
+			trim: true,
+		},
+		country: {
+			type: String,
+			required: true,
+			default: "",
+			maxlength: 56,
+			trim: true,
+		},
+		favoriteMode: {
+			type: String,
+			enum: ["solo", "multiplayer", "hybrid"],
+			required: true,
+			default: "hybrid",
+		},
+		avatarColor: {
+			type: String,
+			required: true,
+			default: "#22d3ee",
+			trim: true,
 		},
 	},
 	{

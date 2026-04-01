@@ -1,6 +1,6 @@
 import MultiplayerRaceResult from "../../../models/MultiplayerRaceResult.model.js";
 import MultiplayerRoom from "../../../models/MultiplayerRoom.model.js";
-import { enqueueLeaderboardRefresh } from "../../leaderboard/queue.js";
+import { refreshLeaderboardSnapshots } from "../../leaderboard/service.js";
 import { RaceResult } from "../types.js";
 import { InternalRoom } from "../room/internal-types.js";
 
@@ -101,6 +101,7 @@ export async function appendFinishedRace(
         name: result.name,
         roomId: room.roomId,
         raceNumber: nextRaceNumber,
+        rank: result.rank,
         wpm: result.wpm,
         accuracy: result.accuracy,
         mistakes: result.mistakes,
@@ -115,11 +116,8 @@ export async function appendFinishedRace(
   ]);
 
   try {
-    await Promise.all([
-      enqueueLeaderboardRefresh("multiplayer"),
-      enqueueLeaderboardRefresh("combined"),
-    ]);
+    await refreshLeaderboardSnapshots(["multiplayer", "combined"]);
   } catch (error) {
-    console.error("Failed to enqueue leaderboard refresh after multiplayer race", error);
+    console.error("Failed to refresh leaderboard after multiplayer race", error);
   }
 }

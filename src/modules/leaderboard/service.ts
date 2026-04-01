@@ -258,6 +258,13 @@ export async function rebuildLeaderboardSnapshot(
   return snapshot;
 }
 
+export async function refreshLeaderboardSnapshots(
+  boards: LeaderboardBoard[]
+): Promise<void> {
+  const uniqueBoards = [...new Set(boards)];
+  await Promise.all(uniqueBoards.map((board) => rebuildLeaderboardSnapshot(board)));
+}
+
 async function readRedisSnapshot(
   board: LeaderboardBoard
 ): Promise<LeaderboardResponse | null> {

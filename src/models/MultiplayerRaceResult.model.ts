@@ -5,6 +5,7 @@ export interface IMultiplayerRaceResult {
   name: string;
   roomId: string;
   raceNumber: number;
+  rank: number;
   wpm: number;
   accuracy: number;
   mistakes: number;
@@ -43,6 +44,11 @@ const multiplayerRaceResultSchema = new Schema<
       index: true,
     },
     raceNumber: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    rank: {
       type: Number,
       required: true,
       min: 1,
