@@ -40,21 +40,18 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
 		},
 		bio: {
 			type: String,
-			required: true,
 			default: "",
 			maxlength: 220,
 			trim: true,
 		},
 		tagline: {
 			type: String,
-			required: true,
 			default: "",
 			maxlength: 80,
 			trim: true,
 		},
 		country: {
 			type: String,
-			required: true,
 			default: "",
 			maxlength: 56,
 			trim: true,
