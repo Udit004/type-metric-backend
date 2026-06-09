@@ -5,6 +5,7 @@ export interface IUser {
 	name: string;
 	email: string;
 	password: string;
+	googleId?: string;
 	bio: string;
 	tagline: string;
 	country: string;
@@ -37,6 +38,12 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
 			type: String,
 			required: true,
 			minlength: 6,
+		},
+		googleId: {
+			type: String,
+			unique: true,
+			sparse: true,
+			trim: true,
 		},
 		bio: {
 			type: String,

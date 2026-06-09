@@ -1,6 +1,13 @@
 import { Request, Response } from "express";
 
-import { getCurrentUser, loginUser, registerUser } from "./service.js";
+import {
+	buildFrontendGoogleCallbackUrl,
+	getCurrentUser,
+	getGoogleLoginUrl,
+	loginUser,
+	loginWithGoogleCode,
+	registerUser,
+} from "./service.js";
 
 function readBody(body: unknown): { name?: string; email?: string; password?: string } {
 	if (!body || typeof body !== "object") {
@@ -56,5 +63,32 @@ export async function me(req: Request, res: Response): Promise<void> {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Failed to fetch user";
 		res.status(404).json({ message });
+	}
+}
+
+export async function googleStart(_req: Request, res: Response): Promise<void> {
+	try {
+		res.redirect(getGoogleLoginUrl());
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Failed to start Google login";
+		res.status(500).json({ message });
+	}
+}
+
+export async function googleCallback(req: Request, res: Response): Promise<void> {
+	try {
+		const code = typeof req.query.code === "string" ? req.query.code : "";
+		const state = typeof req.query.state === "string" ? req.query.state : "";
+
+		if (!code || !state) {
+			res.status(400).json({ message: "Missing Google code or state" });
+			return;
+		}
+
+		const result = await loginWithGoogleCode(code, state);
+		res.redirect(buildFrontendGoogleCallbackUrl(result.token));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Google login failed";
+		res.status(401).send(message);
 	}
 }

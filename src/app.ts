@@ -4,6 +4,7 @@ import helmet from "helmet";
 
 import { requestLogger } from "./middlewares/requestLogger.js";
 import authRouter from "./modules/auth/route.js";
+import { googleCallback, googleStart } from "./modules/auth/controller.js";
 import leaderboardRouter from "./modules/leaderboard/route.js";
 import multiplayerRouter from "./modules/multiplayer/route.js";
 import profileRouter from "./modules/profile/route.js";
@@ -25,7 +26,10 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true, service: "typemetric-backend" });
 });
 
-app.use("/api/v1/auth", authRouter);
+app.get("/auth/google", googleStart);
+app.get("/auth/google/callback", googleCallback);
+
+app.use("/auth", authRouter);
 app.use("/api/v1/leaderboard", leaderboardRouter);
 app.use("/api/v1/typing-sessions", typingSessionRouter);
 app.use("/api/v1/multiplayer", multiplayerRouter);
