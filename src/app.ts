@@ -26,10 +26,10 @@ app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true, service: "typemetric-backend" });
 });
 
-app.get("/auth/google", googleStart);
-app.get("/auth/google/callback", googleCallback);
+// app.get("/auth/google", googleStart);
+// app.get("/auth/google/callback", googleCallback);
 
-app.use("/auth", authRouter);
+app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/leaderboard", leaderboardRouter);
 app.use("/api/v1/typing-sessions", typingSessionRouter);
 app.use("/api/v1/multiplayer", multiplayerRouter);
