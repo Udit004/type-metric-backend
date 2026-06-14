@@ -8,6 +8,9 @@ import Friendship from "../../models/Friendship.model.js";
 import User from "../../models/User.model.js";
 import { multiplayerRoomService } from "./service.js";
 import { MultiplayerServerEvent, MultiplayerUser, ProgressUpdateInput } from "./types.js";
+import { createLudoHandlers, type LudoClientEvent, type LudoServerEvent } from "../ludo/index.js";
+
+
 
 interface WsClientMessage {
   type?: string;
@@ -340,11 +343,53 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
     });
   };
 
+  // Ludo delegation inside the same authenticated /ws gateway
+  const { handleLudoEvent } = createLudoHandlers(server as any);
+
+  function broadcastToLudoRoom(roomId: string, message: LudoServerEvent): void {
+    // Use the same per-socket context.roomId mechanism; ludo will set context.roomId to the ludo room.
+    contexts.forEach((context, ws) => {
+      if (context.roomId === roomId) {
+        send(ws, message);
+      }
+    });
+  }
+
   multiplayerRoomService.setEventListener(handleServiceEvent);
 
   wss.on("connection", async (socket: WebSocket, request: IncomingMessage) => {
+
     try {
+      const url = request.url ?? "";
+      const wantsLudoTestNoAuth = url.includes("test=ludo");
+
+      if (wantsLudoTestNoAuth) {
+        console.log("[WS TEST] skipping auth for ludo test client. url=", url);
+        // minimal user stub; enough to keep gateway from closing immediately
+        const user: MultiplayerUser = {
+          userId: "test-user",
+          name: "LudoTest",
+        };
+
+        contexts.set(socket, {
+          user,
+          roomId: null,
+        });
+
+        send(socket, {
+          type: "connection:ready",
+          payload: { user },
+        });
+
+        socket.on("message", () => {
+          // ignore for now
+        });
+
+        return;
+      }
+
       const user = await authenticate(request);
+
 
       contexts.set(socket, {
         user,
@@ -607,9 +652,44 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
               });
               break;
             }
-            default:
+            default: {
+              // Ludo events handled here
+              if (parsed.type.startsWith("ludo:")) {
+                const ludoEvent = parsed as unknown as { type: string; payload?: unknown };
+
+                // Ensure ludo sockets can broadcast to correct ludo room
+                // Put the ws into ludo room context if possible.
+                if (
+                  ludoEvent.type === "ludo:room:create" ||
+                  ludoEvent.type === "ludo:room:join" ||
+                  ludoEvent.type === "ludo:room:start" ||
+                  ludoEvent.type === "ludo:dice:roll" ||
+                  ludoEvent.type === "ludo:token:move" ||
+                  ludoEvent.type === "ludo:turn:end"
+                ) {
+                  const payload = (ludoEvent.payload ?? {}) as any;
+                  if (typeof payload.roomId === "string") {
+                    context.roomId = payload.roomId;
+                  }
+                }
+
+                void handleLudoEvent({
+                  socket,
+                  context: { user: context.user },
+                  event: ludoEvent as any,
+                  send: (msg: LudoServerEvent) => send(socket, msg),
+                  broadcastToRoom: (roomId, msg) => broadcastToLudoRoom(roomId, msg),
+                }).catch((err: any) => {
+                  sendError(socket, "BAD_REQUEST", err instanceof Error ? err.message : String(err));
+                });
+
+                break;
+              }
+
               throw new Error(`Unsupported event type: ${parsed.type}`);
+            }
           }
+
         } catch (error) {
           const message = error instanceof Error ? error.message : "Invalid WebSocket message";
           sendError(socket, "BAD_REQUEST", message);
