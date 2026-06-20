@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
+import { ensureUserIdentityFields } from "../gamification/service.js";
+import { generateUniqueUsername } from "../gamification/username.js";
 import User from "../../models/User.model.js";
 
 interface RegisterInput {
@@ -23,7 +25,10 @@ interface GoogleProfileInput {
 interface AuthUser {
 	id: string;
 	name: string;
+	displayName: string;
 	email: string;
+	username: string;
+	timezone: string;
 }
 
 interface AuthResult {
@@ -73,11 +78,22 @@ function signToken(userId: string): string {
 	return jwt.sign({ userId }, getJwtSecret(), { expiresIn: "7d" });
 }
 
-function toAuthUser(user: { _id: unknown; name: string; email: string }): AuthUser {
+function toAuthUser(user: {
+	_id: unknown;
+	name: string;
+	displayName: string;
+	email: string;
+	username: string;
+	timezone: string;
+}): AuthUser {
+	const displayName = user.displayName || user.name;
 	return {
 		id: String(user._id),
-		name: user.name,
+		name: displayName,
+		displayName,
 		email: user.email,
+		username: user.username,
+		timezone: user.timezone || "UTC",
 	};
 }
 
@@ -160,17 +176,21 @@ export async function registerUser(payload: RegisterInput): Promise<AuthResult> 
 		throw new Error("User already exists with this email");
 	}
 
+	const username = await generateUniqueUsername(payload.email);
 	const user = await User.create({
 		name: payload.name,
+		displayName: payload.name,
 		email: payload.email.toLowerCase(),
 		password: payload.password,
+		username,
 	});
 
+	const normalizedUser = await ensureUserIdentityFields(String(user._id));
 	const token = signToken(String(user._id));
 
 	return {
 		token,
-		user: toAuthUser(user),
+		user: toAuthUser(normalizedUser),
 	};
 }
 
@@ -188,15 +208,16 @@ export async function loginUser(payload: LoginInput): Promise<AuthResult> {
 	}
 
 	const token = signToken(String(user._id));
+	const normalizedUser = await ensureUserIdentityFields(String(user._id));
 
 	return {
 		token,
-		user: toAuthUser(user),
+		user: toAuthUser(normalizedUser),
 	};
 }
 
 export async function getCurrentUser(userId: string): Promise<AuthUser> {
-	const user = await User.findById(userId).select("name email");
+	const user = await ensureUserIdentityFields(userId);
 
 	if (!user) {
 		throw new Error("User not found");
@@ -228,11 +249,14 @@ export async function loginWithGoogleCode(code: string, state: string): Promise<
 	});
 
 	if (!user) {
+		const username = await generateUniqueUsername(normalizedEmail);
 		user = await User.create({
 			name: profile.name || "Google User",
+			displayName: profile.name || "Google User",
 			email: normalizedEmail,
 			password: createOAuthPassword(),
 			googleId: profile.googleId,
+			username,
 		});
 	} else {
 		let changed = false;
@@ -247,15 +271,21 @@ export async function loginWithGoogleCode(code: string, state: string): Promise<
 			changed = true;
 		}
 
+		if (!user.displayName && profile.name) {
+			user.displayName = profile.name;
+			changed = true;
+		}
+
 		if (changed) {
 			await user.save();
 		}
 	}
 
 	const token = signToken(String(user._id));
+	const normalizedUser = await ensureUserIdentityFields(String(user._id));
 
 	return {
 		token,
-		user: toAuthUser(user),
+		user: toAuthUser(normalizedUser),
 	};
 }

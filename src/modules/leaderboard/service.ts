@@ -135,7 +135,7 @@ async function buildBestSoloEntries(): Promise<LeaderboardCandidateEntry[]> {
       $project: {
         _id: 0,
         userId: { $toString: "$doc.user" },
-        name: "$user.name",
+        name: { $ifNull: ["$user.displayName", "$user.name"] },
         bestWpm: "$doc.wpm",
         accuracy: "$doc.accuracy",
         mistakes: "$doc.mistakes",

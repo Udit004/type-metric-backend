@@ -1,6 +1,7 @@
 import TypingSession, {
   CompletionReason,
 } from "../../models/TypingSession.model.js";
+import { rebuildUserGamification } from "../gamification/service.js";
 import { refreshLeaderboardSnapshots } from "../leaderboard/service.js";
 
 export interface CreateTypingSessionInput {
@@ -45,6 +46,12 @@ export async function createTypingSession(
     durationSeconds: payload.durationSeconds,
     completionReason: payload.completionReason,
   });
+
+  try {
+    await rebuildUserGamification(payload.userId);
+  } catch (error) {
+    console.error("Failed to rebuild gamification after typing session", error);
+  }
 
   try {
     await refreshLeaderboardSnapshots(["solo", "combined"]);

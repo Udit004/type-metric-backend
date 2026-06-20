@@ -1,4 +1,5 @@
 import MultiplayerRaceResult from "../../../models/MultiplayerRaceResult.model.js";
+import { rebuildAllGamificationForUsers } from "../../gamification/service.js";
 import MultiplayerRoom from "../../../models/MultiplayerRoom.model.js";
 import { refreshLeaderboardSnapshots } from "../../leaderboard/service.js";
 import { RaceResult } from "../types.js";
@@ -114,6 +115,12 @@ export async function appendFinishedRace(
       }))
     ),
   ]);
+
+  try {
+    await rebuildAllGamificationForUsers(results.map((result) => result.userId));
+  } catch (error) {
+    console.error("Failed to rebuild gamification after multiplayer race", error);
+  }
 
   try {
     await refreshLeaderboardSnapshots(["multiplayer", "combined"]);

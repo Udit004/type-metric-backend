@@ -2,18 +2,47 @@ import { Types } from "mongoose";
 
 import Friendship from "../../models/Friendship.model.js";
 import MultiplayerRaceResult from "../../models/MultiplayerRaceResult.model.js";
+import PlayerBadge, { IPlayerBadge } from "../../models/PlayerBadge.model.js";
+import PlayerDailyActivity, {
+  IPlayerDailyActivity,
+} from "../../models/PlayerDailyActivity.model.js";
+import PlayerProfileStats, {
+  IPlayerProfileStats,
+} from "../../models/PlayerProfileStats.model.js";
 import TypingSession from "../../models/TypingSession.model.js";
-import User from "../../models/User.model.js";
+import User, { IUser } from "../../models/User.model.js";
+import { cloudinary } from "../../config/cloudinary.js";
+import {
+  BADGE_DEFINITIONS,
+  BadgeDefinition,
+} from "../gamification/config.js";
+import {
+  ensureUserIdentityFields,
+  getPlayerProfileStats,
+  getPublicGamificationByUsername,
+  normalizeTimezone,
+  rebuildUserGamification,
+  syncIdentitySnapshots,
+  getUserDisplayName,
+} from "../gamification/service.js";
+import { generateUniqueUsername, normalizeUsernameCandidate } from "../gamification/username.js";
 
 type FavoriteMode = "solo" | "multiplayer" | "hybrid";
+type ProfileVisibility = "public" | "private";
 
 interface BasicUserRecord {
   _id: unknown;
   name: string;
+  displayName: string;
+  username: string;
+  avatarImageUrl?: string;
   email: string;
   tagline: string;
   bio: string;
   country: string;
+  timezone: string;
+  profileVisibility: ProfileVisibility;
+  usernameUpdatedAt?: Date | null;
   favoriteMode: FavoriteMode;
   avatarColor: string;
   createdAt: Date;
@@ -22,12 +51,32 @@ interface BasicUserRecord {
 export interface ProfileIdentity {
   id: string;
   name: string;
+  displayName: string;
+  username: string;
+  avatarImageUrl?: string;
   email: string;
   tagline: string;
   bio: string;
   country: string;
+  timezone: string;
+  profileVisibility: ProfileVisibility;
   favoriteMode: FavoriteMode;
   avatarColor: string;
+  memberSince: string;
+}
+
+export interface PublicProfileIdentity {
+  id: string;
+  name: string;
+  displayName: string;
+  username: string;
+  tagline: string;
+  bio: string;
+  country: string;
+  timezone: string;
+  favoriteMode: FavoriteMode;
+  avatarColor: string;
+  avatarImageUrl?: string;
   memberSince: string;
 }
 
@@ -35,7 +84,8 @@ export interface ProfileFriend {
   friendshipId: string;
   id: string;
   name: string;
-  email: string;
+  displayName: string;
+  username: string;
   tagline: string;
   avatarColor: string;
   favoriteMode: FavoriteMode;
@@ -54,6 +104,41 @@ export interface ProfileStats {
 export interface RacingStats extends ProfileStats {
   winsCount: number;
   podiumCount: number;
+}
+
+export interface GamificationSummary {
+  xp: number;
+  level: number;
+  levelProgressPercent: number;
+  currentStreak: number;
+  longestStreak: number;
+  activeDaysCount: number;
+  earnedBadgeCount: number;
+}
+
+export interface ActivityGridCell {
+  activityDate: string;
+  heatScore: number;
+  xpEarned: number;
+  completedDay: boolean;
+  typingSessionsCount: number;
+  multiplayerRacesCount: number;
+  bestWpm: number;
+  bestAccuracy: number;
+}
+
+export interface PublicBadgeView {
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: BadgeDefinition["category"];
+  rarity: BadgeDefinition["rarity"];
+  sortOrder: number;
+  progressCurrent: number;
+  progressTarget: number;
+  isCompleted: boolean;
+  awardedAt: string | null;
 }
 
 export interface RecentTypingSession {
@@ -83,7 +168,8 @@ export interface RecentRace {
 export interface SearchUserResult {
   id: string;
   name: string;
-  email: string;
+  displayName: string;
+  username: string;
   tagline: string;
   avatarColor: string;
   favoriteMode: FavoriteMode;
@@ -95,11 +181,25 @@ export interface ProfileDashboard {
   profile: ProfileIdentity;
   typingStats: ProfileStats;
   racingStats: RacingStats;
+  gamification: GamificationSummary;
+  activityGrid: ActivityGridCell[];
+  badges: PublicBadgeView[];
   recentTypingSessions: RecentTypingSession[];
   recentRaces: RecentRace[];
   friends: ProfileFriend[];
   incomingRequests: ProfileFriend[];
   outgoingRequests: ProfileFriend[];
+}
+
+export interface PublicProfileView {
+  profile: PublicProfileIdentity;
+  typingStats: ProfileStats;
+  racingStats: RacingStats;
+  gamification: GamificationSummary;
+  activityGrid: ActivityGridCell[];
+  badges: PublicBadgeView[];
+  recentTypingSessions: RecentTypingSession[];
+  recentRaces: RecentRace[];
 }
 
 interface FriendshipRecord {
@@ -113,18 +213,9 @@ interface FriendshipRecord {
   acceptedAt?: Date | null;
 }
 
-interface AggregateStatsResult {
-  sessionsCount?: number;
-  bestWpm?: number;
-  averageWpm?: number;
-  bestAccuracy?: number;
-  averageAccuracy?: number;
-  totalMistakes?: number;
-  winsCount?: number;
-  podiumCount?: number;
-}
-
 const PROFILE_SEARCH_LIMIT = 8;
+const DEFAULT_ACTIVITY_GRID_DAYS = 180;
+const USERNAME_CHANGE_COOLDOWN_DAYS = 30;
 
 function normalizeString(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -143,29 +234,54 @@ function assertObjectId(value: string): Types.ObjectId {
 }
 
 function toProfileIdentity(user: BasicUserRecord): ProfileIdentity {
+  const displayName = getUserDisplayName(user);
+
   return {
     id: String(user._id),
-    name: user.name,
+    name: displayName,
+    displayName,
+    username: user.username,
+    avatarImageUrl: user.avatarImageUrl ?? undefined,
     email: user.email,
     tagline: user.tagline,
     bio: user.bio,
     country: user.country,
+    timezone: user.timezone,
+    profileVisibility: user.profileVisibility,
     favoriteMode: user.favoriteMode,
     avatarColor: user.avatarColor,
     memberSince: user.createdAt.toISOString(),
   };
 }
 
-function toProfileFriend(
-  friendshipId: unknown,
-  user: BasicUserRecord,
-  createdAt: Date
-): ProfileFriend {
+function toPublicProfileIdentity(user: BasicUserRecord): PublicProfileIdentity {
+  const displayName = getUserDisplayName(user);
+
+  return {
+    id: String(user._id),
+    name: displayName,
+    displayName,
+    username: user.username,
+    tagline: user.tagline,
+    bio: user.bio,
+    country: user.country,
+    timezone: user.timezone,
+    favoriteMode: user.favoriteMode,
+    avatarColor: user.avatarColor,
+    avatarImageUrl: user.avatarImageUrl ?? undefined,
+    memberSince: user.createdAt.toISOString(),
+  };
+}
+
+function toProfileFriend(friendshipId: unknown, user: BasicUserRecord, createdAt: Date): ProfileFriend {
+  const displayName = getUserDisplayName(user);
+
   return {
     friendshipId: String(friendshipId),
     id: String(user._id),
-    name: user.name,
-    email: user.email,
+    name: displayName,
+    displayName,
+    username: user.username,
     tagline: user.tagline,
     avatarColor: user.avatarColor,
     favoriteMode: user.favoriteMode,
@@ -173,32 +289,84 @@ function toProfileFriend(
   };
 }
 
-function emptyProfileStats(): ProfileStats {
+function toTypingStats(stats: IPlayerProfileStats | null): ProfileStats {
   return {
-    sessionsCount: 0,
-    bestWpm: 0,
-    averageWpm: 0,
-    bestAccuracy: 0,
-    averageAccuracy: 0,
+    sessionsCount: stats?.typing.sessionsCount ?? 0,
+    bestWpm: stats?.typing.bestWpm ?? 0,
+    averageWpm: stats?.typing.averageWpm ?? 0,
+    bestAccuracy: stats?.typing.bestAccuracy ?? 0,
+    averageAccuracy: stats?.typing.averageAccuracy ?? 0,
+    totalMistakes: stats?.typing.totalMistakes ?? 0,
+  };
+}
+
+function toRacingStats(stats: IPlayerProfileStats | null): RacingStats {
+  return {
+    sessionsCount: stats?.multiplayer.racesCount ?? 0,
+    bestWpm: stats?.multiplayer.bestWpm ?? 0,
+    averageWpm: stats?.multiplayer.averageWpm ?? 0,
+    bestAccuracy: stats?.typing.bestAccuracy ?? 0,
+    averageAccuracy: stats?.multiplayer.averageAccuracy ?? 0,
     totalMistakes: 0,
+    winsCount: stats?.multiplayer.winsCount ?? 0,
+    podiumCount: stats?.multiplayer.podiumCount ?? 0,
   };
 }
 
-function emptyRacingStats(): RacingStats {
+function toGamificationSummary(stats: IPlayerProfileStats | null): GamificationSummary {
   return {
-    ...emptyProfileStats(),
-    winsCount: 0,
-    podiumCount: 0,
+    xp: stats?.progression.xp ?? 0,
+    level: stats?.progression.level ?? 1,
+    levelProgressPercent: stats?.progression.levelProgressPercent ?? 0,
+    currentStreak: stats?.engagement.currentStreak ?? 0,
+    longestStreak: stats?.engagement.longestStreak ?? 0,
+    activeDaysCount: stats?.engagement.activeDaysCount ?? 0,
+    earnedBadgeCount: stats?.progression.earnedBadgeCount ?? 0,
   };
 }
 
-function roundMetric(value: number | undefined): number {
-  return Number((value ?? 0).toFixed(2));
+function toActivityCell(activity: IPlayerDailyActivity): ActivityGridCell {
+  return {
+    activityDate: activity.activityDate,
+    heatScore: activity.heatScore,
+    xpEarned: activity.xpEarned,
+    completedDay: activity.completedDay,
+    typingSessionsCount: activity.typingSessionsCount,
+    multiplayerRacesCount: activity.multiplayerRacesCount,
+    bestWpm: activity.bestWpm,
+    bestAccuracy: activity.bestAccuracy,
+  };
 }
 
-async function findUserOrThrow(userId: string): Promise<BasicUserRecord> {
+function toBadgeView(badge: IPlayerBadge): PublicBadgeView | null {
+  const definition = BADGE_DEFINITIONS.find((candidate) => candidate.key === badge.badgeKey);
+
+  if (!definition) {
+    return null;
+  }
+
+  return {
+    key: definition.key,
+    name: definition.name,
+    description: definition.description,
+    icon: definition.icon,
+    category: definition.category,
+    rarity: definition.rarity,
+    sortOrder: definition.sortOrder,
+    progressCurrent: badge.progressCurrent,
+    progressTarget: badge.progressTarget,
+    isCompleted: badge.isCompleted,
+    awardedAt: badge.awardedAt ? badge.awardedAt.toISOString() : null,
+  };
+}
+
+async function findUserOrThrowById(userId: string): Promise<BasicUserRecord> {
+  await ensureUserIdentityFields(userId);
+
   const user = await User.findById(userId)
-    .select("name email tagline bio country favoriteMode avatarColor createdAt")
+    .select(
+      "name displayName username email tagline bio country timezone profileVisibility favoriteMode avatarColor avatarImageUrl usernameUpdatedAt createdAt"
+    )
     .lean<BasicUserRecord | null>();
 
   if (!user) {
@@ -214,89 +382,19 @@ async function getUsersMap(userIds: string[]): Promise<Map<string, BasicUserReco
   }
 
   const users = await User.find({ _id: { $in: userIds } })
-    .select("name email tagline bio country favoriteMode avatarColor createdAt")
+    .select(
+      "name displayName username email tagline bio country timezone profileVisibility favoriteMode avatarColor avatarImageUrl createdAt"
+    )
     .lean<BasicUserRecord[]>();
 
   return new Map(users.map((user) => [String(user._id), user]));
 }
 
-async function getTypingStats(userObjectId: Types.ObjectId): Promise<ProfileStats> {
-  const [stats] = await TypingSession.aggregate<AggregateStatsResult>([
-    { $match: { user: userObjectId } },
-    {
-      $group: {
-        _id: null,
-        sessionsCount: { $sum: 1 },
-        bestWpm: { $max: "$wpm" },
-        averageWpm: { $avg: "$wpm" },
-        bestAccuracy: { $max: "$accuracy" },
-        averageAccuracy: { $avg: "$accuracy" },
-        totalMistakes: { $sum: "$mistakes" },
-      },
-    },
-  ]);
-
-  if (!stats) {
-    return emptyProfileStats();
-  }
-
-  return {
-    sessionsCount: stats.sessionsCount ?? 0,
-    bestWpm: roundMetric(stats.bestWpm),
-    averageWpm: roundMetric(stats.averageWpm),
-    bestAccuracy: roundMetric(stats.bestAccuracy),
-    averageAccuracy: roundMetric(stats.averageAccuracy),
-    totalMistakes: stats.totalMistakes ?? 0,
-  };
-}
-
-async function getRacingStats(userId: string): Promise<RacingStats> {
-  const [stats] = await MultiplayerRaceResult.aggregate<AggregateStatsResult>([
-    { $match: { userId } },
-    {
-      $group: {
-        _id: null,
-        sessionsCount: { $sum: 1 },
-        bestWpm: { $max: "$wpm" },
-        averageWpm: { $avg: "$wpm" },
-        bestAccuracy: { $max: "$accuracy" },
-        averageAccuracy: { $avg: "$accuracy" },
-        totalMistakes: { $sum: "$mistakes" },
-        winsCount: {
-          $sum: { $cond: [{ $eq: ["$rank", 1] }, 1, 0] },
-        },
-        podiumCount: {
-          $sum: { $cond: [{ $lte: ["$rank", 3] }, 1, 0] },
-        },
-      },
-    },
-  ]);
-
-  if (!stats) {
-    return emptyRacingStats();
-  }
-
-  return {
-    sessionsCount: stats.sessionsCount ?? 0,
-    bestWpm: roundMetric(stats.bestWpm),
-    averageWpm: roundMetric(stats.averageWpm),
-    bestAccuracy: roundMetric(stats.bestAccuracy),
-    averageAccuracy: roundMetric(stats.averageAccuracy),
-    totalMistakes: stats.totalMistakes ?? 0,
-    winsCount: stats.winsCount ?? 0,
-    podiumCount: stats.podiumCount ?? 0,
-  };
-}
-
-async function getRecentTypingSessions(
-  userObjectId: Types.ObjectId
-): Promise<RecentTypingSession[]> {
+async function getRecentTypingSessions(userObjectId: Types.ObjectId): Promise<RecentTypingSession[]> {
   const sessions = await TypingSession.find({ user: userObjectId })
     .sort({ createdAt: -1 })
     .limit(8)
-    .select(
-      "wpm accuracy mistakes elapsedMs durationSeconds completionReason createdAt"
-    )
+    .select("wpm accuracy mistakes elapsedMs durationSeconds completionReason createdAt")
     .lean();
 
   return sessions.map((session) => ({
@@ -386,23 +484,61 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function toBase64(buffer: Buffer): string {
+  return buffer.toString("base64");
+}
+
+function getActivityRange(days: number): { from: Date; fromDateKey: string } {
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() - Math.max(0, days - 1));
+  const fromDateKey = from.toISOString().slice(0, 10);
+  return { from, fromDateKey };
+}
+
+async function getActivityGrid(userId: string, limitDays = DEFAULT_ACTIVITY_GRID_DAYS): Promise<ActivityGridCell[]> {
+  const { fromDateKey } = getActivityRange(limitDays);
+
+  const activities = await PlayerDailyActivity.find({
+    userId,
+    activityDate: { $gte: fromDateKey },
+  })
+    .sort({ activityDate: 1 })
+    .lean<IPlayerDailyActivity[]>();
+
+  return activities.map(toActivityCell);
+}
+
+async function getBadgeViews(userId: string): Promise<PublicBadgeView[]> {
+  const badges = await PlayerBadge.find({ userId }).lean<IPlayerBadge[]>();
+
+  return badges
+    .map(toBadgeView)
+    .filter((badge): badge is PublicBadgeView => Boolean(badge))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
 export async function getProfileDashboard(userId: string): Promise<ProfileDashboard> {
   const userObjectId = assertObjectId(userId);
-  const user = await findUserOrThrow(userId);
+  const user = await findUserOrThrowById(userId);
+  await rebuildUserGamification(userId);
 
-  const [typingStats, racingStats, recentTypingSessions, recentRaces, friendshipCollections] =
+  const [profileStats, recentTypingSessions, recentRaces, friendshipCollections, activityGrid, badges] =
     await Promise.all([
-      getTypingStats(userObjectId),
-      getRacingStats(userId),
+      getPlayerProfileStats(userId),
       getRecentTypingSessions(userObjectId),
       getRecentRaces(userId),
       getFriendshipCollections(userId),
+      getActivityGrid(userId),
+      getBadgeViews(userId),
     ]);
 
   return {
     profile: toProfileIdentity(user),
-    typingStats,
-    racingStats,
+    typingStats: toTypingStats(profileStats),
+    racingStats: toRacingStats(profileStats),
+    gamification: toGamificationSummary(profileStats),
+    activityGrid,
+    badges,
     recentTypingSessions,
     recentRaces,
     friends: friendshipCollections.friends,
@@ -411,25 +547,29 @@ export async function getProfileDashboard(userId: string): Promise<ProfileDashbo
   };
 }
 
-export async function updateProfile(
+export async function updateProfileIdentity(
   userId: string,
   payload: {
-    name?: unknown;
+    displayName?: unknown;
     tagline?: unknown;
     bio?: unknown;
     country?: unknown;
+    timezone?: unknown;
     favoriteMode?: unknown;
     avatarColor?: unknown;
+    profileVisibility?: unknown;
+    name?: unknown;
   }
 ): Promise<ProfileIdentity> {
-  const update: Partial<BasicUserRecord> = {};
+  const update: Partial<IUser> = {};
 
-  if (payload.name !== undefined) {
-    const name = normalizeString(payload.name, 60);
-    if (!name) {
-      throw new Error("name is required");
+  if (payload.displayName !== undefined || payload.name !== undefined) {
+    const displayName = normalizeString(payload.displayName ?? payload.name, 60);
+    if (!displayName) {
+      throw new Error("displayName is required");
     }
-    update.name = name;
+    update.displayName = displayName;
+    update.name = displayName;
   }
 
   if (payload.tagline !== undefined) {
@@ -444,6 +584,10 @@ export async function updateProfile(
     update.country = normalizeString(payload.country, 56);
   }
 
+  if (payload.timezone !== undefined) {
+    update.timezone = normalizeTimezone(normalizeString(payload.timezone, 64));
+  }
+
   if (payload.favoriteMode !== undefined) {
     if (
       payload.favoriteMode !== "solo" &&
@@ -456,6 +600,14 @@ export async function updateProfile(
     update.favoriteMode = payload.favoriteMode;
   }
 
+  if (payload.profileVisibility !== undefined) {
+    if (payload.profileVisibility !== "public" && payload.profileVisibility !== "private") {
+      throw new Error("profileVisibility must be public or private");
+    }
+
+    update.profileVisibility = payload.profileVisibility;
+  }
+
   if (payload.avatarColor !== undefined) {
     const avatarColor = normalizeString(payload.avatarColor, 7);
 
@@ -463,26 +615,189 @@ export async function updateProfile(
       throw new Error("avatarColor must be a valid hex color");
     }
 
-    update.avatarColor = avatarColor.startsWith("#")
-      ? avatarColor
-      : `#${avatarColor}`;
+    update.avatarColor = avatarColor.startsWith("#") ? avatarColor : `#${avatarColor}`;
   }
 
   const user = await User.findByIdAndUpdate(userId, { $set: update }, { new: true })
-    .select("name email tagline bio country favoriteMode avatarColor createdAt")
+    .select(
+      "name displayName username email tagline bio country timezone profileVisibility favoriteMode avatarColor createdAt"
+    )
     .lean<BasicUserRecord | null>();
 
   if (!user) {
     throw new Error("User not found");
   }
 
+  await syncIdentitySnapshots(userId);
   return toProfileIdentity(user);
 }
 
-export async function searchProfileUsers(
+export async function checkUsernameAvailability(
   userId: string,
-  query: string
-): Promise<SearchUserResult[]> {
+  payload: { username?: unknown }
+): Promise<{ available: boolean }> {
+
+  const nextUsername = normalizeUsernameCandidate(normalizeString(payload.username, 40));
+
+  if (!nextUsername) {
+    throw new Error("username is required");
+  }
+
+  const user = await User.findById(userId).select("_id username").lean<IUser | null>();
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  // Always allow your own current username.
+  if (user.username === nextUsername) {
+    return { available: true };
+  }
+
+  const existing = await User.findOne({ username: nextUsername }).select("_id").lean();
+  if (existing && String(existing._id) !== userId) {
+    return { available: false };
+  }
+
+  return { available: true };
+}
+
+export async function updateProfileUsername(
+  userId: string,
+  payload: { username?: unknown }
+): Promise<ProfileIdentity> {
+
+  const nextUsername = normalizeUsernameCandidate(normalizeString(payload.username, 40));
+
+  if (!nextUsername) {
+    throw new Error("username is required");
+  }
+
+  const user = await findUserOrThrowById(userId);
+  const now = new Date();
+
+  if (user.username === nextUsername) {
+    return toProfileIdentity(user);
+  }
+
+  if (user.usernameUpdatedAt) {
+    const nextAllowedAt = new Date(user.usernameUpdatedAt);
+    nextAllowedAt.setUTCDate(nextAllowedAt.getUTCDate() + USERNAME_CHANGE_COOLDOWN_DAYS);
+
+    if (now.getTime() < nextAllowedAt.getTime()) {
+      throw new Error("Username can only be changed every 30 days");
+    }
+  }
+
+  const existing = await User.findOne({ username: nextUsername }).select("_id").lean();
+
+  if (existing && String(existing._id) !== userId) {
+    throw new Error("Username is already taken");
+  }
+
+  const finalUsername =
+    existing && String(existing._id) === userId
+      ? nextUsername
+      : await generateUniqueUsername(nextUsername);
+
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    {
+      $set: {
+        username: finalUsername,
+        usernameUpdatedAt: now,
+      },
+      $inc: {
+        usernameChangeCount: 1,
+      },
+    },
+    { new: true }
+  )
+    .select(
+      "name displayName username email tagline bio country timezone profileVisibility favoriteMode avatarColor createdAt"
+    )
+    .lean<BasicUserRecord | null>();
+
+  if (!updated) {
+    throw new Error("User not found");
+  }
+
+  await syncIdentitySnapshots(userId);
+  return toProfileIdentity(updated);
+}
+
+export async function getPublicProfile(username: string): Promise<PublicProfileView> {
+  const { user, stats, activities } = await getPublicGamificationByUsername(username);
+
+  if (user.profileVisibility === "private") {
+    throw new Error("Profile not found");
+  }
+
+  const [badges, recentTypingSessions, recentRaces] = await Promise.all([
+    getBadgeViews(String(user._id)),
+    getRecentTypingSessions(assertObjectId(String(user._id))),
+    getRecentRaces(String(user._id)),
+  ]);
+
+  return {
+    profile: toPublicProfileIdentity(user as unknown as BasicUserRecord),
+    typingStats: toTypingStats(stats),
+    racingStats: toRacingStats(stats),
+    gamification: toGamificationSummary(stats),
+    activityGrid: activities.map(toActivityCell),
+    badges,
+    recentTypingSessions,
+    recentRaces,
+  };
+}
+
+export async function getPublicProfileActivity(
+  username: string,
+  options?: { from?: string; to?: string }
+): Promise<ActivityGridCell[]> {
+  const normalizedUsername = normalizeUsernameCandidate(username);
+  const user = await User.findOne({ username: normalizedUsername })
+    .select("_id profileVisibility")
+    .lean<Pick<BasicUserRecord, "_id" | "profileVisibility"> | null>();
+
+  if (!user || user.profileVisibility === "private") {
+    throw new Error("Profile not found");
+  }
+
+  const query: Record<string, unknown> = { userId: String(user._id) };
+
+  if (options?.from || options?.to) {
+    query.activityDate = {};
+
+    if (options.from) {
+      (query.activityDate as Record<string, string>).$gte = options.from;
+    }
+
+    if (options.to) {
+      (query.activityDate as Record<string, string>).$lte = options.to;
+    }
+  }
+
+  const activities = await PlayerDailyActivity.find(query)
+    .sort({ activityDate: 1 })
+    .lean<IPlayerDailyActivity[]>();
+
+  return activities.map(toActivityCell);
+}
+
+export async function getPublicProfileBadges(username: string): Promise<PublicBadgeView[]> {
+  const normalizedUsername = normalizeUsernameCandidate(username);
+  const user = await User.findOne({ username: normalizedUsername })
+    .select("_id profileVisibility")
+    .lean<Pick<BasicUserRecord, "_id" | "profileVisibility"> | null>();
+
+  if (!user || user.profileVisibility === "private") {
+    throw new Error("Profile not found");
+  }
+
+  return getBadgeViews(String(user._id));
+}
+
+export async function searchProfileUsers(userId: string, query: string): Promise<SearchUserResult[]> {
   const trimmedQuery = query.trim();
 
   if (trimmedQuery.length < 2) {
@@ -492,15 +807,16 @@ export async function searchProfileUsers(
   const regex = new RegExp(escapeRegex(trimmedQuery), "i");
   const users = await User.find({
     _id: { $ne: userId },
-    $or: [{ name: regex }, { email: regex }],
+    profileVisibility: "public",
+    $or: [{ username: regex }, { displayName: regex }],
   })
-    .select("name email tagline favoriteMode avatarColor")
-    .sort({ name: 1 })
+    .select("name displayName username tagline favoriteMode avatarColor")
+    .sort({ username: 1 })
     .limit(PROFILE_SEARCH_LIMIT)
     .lean<
       Pick<
         BasicUserRecord,
-        "_id" | "name" | "email" | "tagline" | "favoriteMode" | "avatarColor"
+        "_id" | "name" | "displayName" | "username" | "tagline" | "favoriteMode" | "avatarColor"
       >[]
     >();
 
@@ -535,8 +851,9 @@ export async function searchProfileUsers(
 
     return {
       id: String(user._id),
-      name: user.name,
-      email: user.email,
+      name: user.displayName || user.name,
+      displayName: user.displayName || user.name,
+      username: user.username,
       tagline: user.tagline,
       avatarColor: user.avatarColor,
       favoriteMode: user.favoriteMode,
@@ -595,10 +912,7 @@ export async function sendFriendRequest(
   };
 }
 
-export async function acceptFriendRequest(
-  currentUserId: string,
-  requestId: string
-): Promise<void> {
+export async function acceptFriendRequest(currentUserId: string, requestId: string): Promise<void> {
   const currentUserObjectId = assertObjectId(currentUserId);
   const requestObjectId = assertObjectId(requestId);
 
@@ -622,20 +936,14 @@ export async function acceptFriendRequest(
   }
 }
 
-export async function deleteFriendRequest(
-  currentUserId: string,
-  requestId: string
-): Promise<void> {
+export async function deleteFriendRequest(currentUserId: string, requestId: string): Promise<void> {
   const currentUserObjectId = assertObjectId(currentUserId);
   const requestObjectId = assertObjectId(requestId);
 
   const deleted = await Friendship.collection.findOneAndDelete({
     _id: requestObjectId,
     status: "pending",
-    $or: [
-      { requester: currentUserObjectId },
-      { recipient: currentUserObjectId },
-    ],
+    $or: [{ requester: currentUserObjectId }, { recipient: currentUserObjectId }],
   });
 
   if (!deleted) {
@@ -643,10 +951,7 @@ export async function deleteFriendRequest(
   }
 }
 
-export async function removeFriend(
-  currentUserId: string,
-  friendUserId: string
-): Promise<void> {
+export async function removeFriend(currentUserId: string, friendUserId: string): Promise<void> {
   const pairKey = buildPairKey(currentUserId, friendUserId);
 
   const deleted = await Friendship.collection.findOneAndDelete({
@@ -657,4 +962,49 @@ export async function removeFriend(
   if (!deleted) {
     throw new Error("Friendship not found");
   }
+}
+
+export async function updateMyAvatar(
+  userId: string,
+  buffer: Buffer,
+  mimetype: string
+): Promise<void> {
+  const user = await User.findById(userId).select("_id").lean<IUser | null>();
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (!buffer || buffer.length === 0) {
+    throw new Error("Avatar file is empty");
+  }
+
+  // More robust upload: stream the buffer to Cloudinary (avoids data-uri parsing issues)
+  const uploadResult = await new Promise<{
+    secure_url?: string;
+  }>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "typemetric/avatars",
+        resource_type: "image",
+        overwrite: true,
+        public_id: userId, // overwrite previous avatar for the user
+        // cloudinary doesn't strictly require it, but helps for some types
+        transformation: [{ quality: "auto" }],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result as { secure_url?: string });
+      }
+    );
+
+    stream.end(buffer);
+  });
+
+  if (!uploadResult?.secure_url) {
+    throw new Error("Cloudinary upload succeeded but secure_url was missing");
+  }
+
+  await User.findByIdAndUpdate(userId, {
+    $set: { avatarImageUrl: uploadResult.secure_url },
+  });
 }
