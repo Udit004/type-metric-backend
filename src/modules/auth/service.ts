@@ -276,6 +276,11 @@ export async function loginWithGoogleCode(code: string, state: string): Promise<
 			changed = true;
 		}
 
+		if (!user.username) {
+			user.username = await generateUniqueUsername(normalizedEmail);
+			changed = true;
+		}
+
 		if (changed) {
 			await user.save();
 		}
