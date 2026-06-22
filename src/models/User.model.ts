@@ -109,7 +109,7 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
 		},
 		avatarImageUrl: {
 			type: String,
-			required: true,
+			required: false,
 			default: "",
 			trim: true,
 		},
