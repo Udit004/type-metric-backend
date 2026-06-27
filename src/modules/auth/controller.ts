@@ -9,6 +9,7 @@ import {
 	loginWithGoogleCode,
 	registerUser,
 } from "./service.js";
+import { sendTelegramMessage } from "../../TelegramBot.js";
 
 function readBody(body: unknown): { name?: string; email?: string; password?: string } {
 	if (!body || typeof body !== "object") {
@@ -37,6 +38,13 @@ export async function login(req: Request, res: Response): Promise<void> {
 	}
 
 	const result = await loginUser({ email, password });
+
+	await sendTelegramMessage(`
+		🎉 New User
+		Name: ${result.user.name} 
+		Email: ${email}
+	`);
+
 	res.status(200).json(result);
 }
 
