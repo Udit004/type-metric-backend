@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import * as Sentry from "@sentry/node";
 import helmet from "helmet";
 import logger from "./logger.js";
 
@@ -47,6 +48,7 @@ app.use((_req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
+Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 export default app;
