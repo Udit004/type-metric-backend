@@ -7,9 +7,8 @@ dotenv.config();
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_CHAT_ID;
 
-console.log(token, chatId)
 
-export async function sendTelegramMessage(message: undefined) {
+export async function sendTelegramMessage(message: String) {
     try {
         const response = await axios.post(
             `https://api.telegram.org/bot${token}/sendMessage`,
@@ -21,7 +20,7 @@ export async function sendTelegramMessage(message: undefined) {
         );
 
         console.log(response);
-    } catch (err: unknown) {
+    } catch (err: any) {
         console.error("Telegram Error:");
         console.error(err.response?.data);
     }
