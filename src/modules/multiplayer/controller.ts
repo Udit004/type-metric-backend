@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { AccessToken } from "livekit-server-sdk";
+import { AppError } from "../../utils/AppError.js";
 
 import User from "../../models/User.model.js";
 import { multiplayerRoomService } from "./service.js";
@@ -8,34 +9,28 @@ function readBody(body: unknown): { promptText?: string } {
   if (!body || typeof body !== "object") {
     return {};
   }
-
   return body as { promptText?: string };
 }
 
 async function requireUser(req: Request): Promise<{ userId: string; name: string }> {
   if (!req.userId) {
-    throw new Error("Unauthorized");
+    throw new AppError(401, "Unauthorized");
   }
 
   const user = await User.findById(req.userId).select("name").lean();
 
   if (!user) {
-    throw new Error("Unauthorized");
+    throw new AppError(401, "Unauthorized");
   }
 
-  return {
-    userId: req.userId,
-    name: user.name,
-  };
+  return { userId: req.userId, name: user.name };
 }
 
 function readRoomId(req: Request): string | null {
   const roomId = req.params.roomId;
-
   if (typeof roomId !== "string" || roomId.trim().length === 0) {
     return null;
   }
-
   return roomId;
 }
 
@@ -45,97 +40,84 @@ function readLivekitConfig(): { url: string; apiKey: string; apiSecret: string }
   const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
 
   if (!url || !apiKey || !apiSecret) {
-    throw new Error("Voice chat is not configured");
+    throw new AppError(500, "Voice chat is not configured");
   }
 
   return { url, apiKey, apiSecret };
 }
 
 export async function createRoom(req: Request, res: Response): Promise<void> {
+  const user = await requireUser(req);
+  const body = readBody(req.body);
+
   try {
-    const user = await requireUser(req);
-    const body = readBody(req.body);
-
     const room = multiplayerRoomService.createRoom(user, body.promptText);
-
     res.status(201).json({ room });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create room";
-    const status = message === "Unauthorized" ? 401 : 400;
-    res.status(status).json({ message });
+    throw new AppError(400, message);
   }
 }
 
 export async function joinRoom(req: Request, res: Response): Promise<void> {
+  const user = await requireUser(req);
+  const roomId = readRoomId(req);
+
+  if (!roomId) {
+    throw new AppError(400, "roomId is required");
+  }
+
   try {
-    const user = await requireUser(req);
-    const roomId = readRoomId(req);
-
-    if (!roomId) {
-      res.status(400).json({ message: "roomId is required" });
-      return;
-    }
-
     const room = multiplayerRoomService.joinRoom(roomId, user);
-
     res.status(200).json({ room });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to join room";
-    const status = message === "Unauthorized" ? 401 : 400;
-    res.status(status).json({ message });
+    throw new AppError(400, message);
   }
 }
 
 export async function getRoom(req: Request, res: Response): Promise<void> {
+  const user = await requireUser(req);
+  const roomId = readRoomId(req);
+
+  if (!roomId) {
+    throw new AppError(400, "roomId is required");
+  }
+
   try {
-    const user = await requireUser(req);
-    const roomId = readRoomId(req);
-
-    if (!roomId) {
-      res.status(400).json({ message: "roomId is required" });
-      return;
-    }
-
     const room = multiplayerRoomService.getRoom(roomId);
-
     if (!room) {
-      res.status(404).json({ message: "Room not found" });
-      return;
+      throw new AppError(404, "Room not found");
     }
 
     if (!multiplayerRoomService.isParticipant(roomId, user.userId)) {
-      res.status(403).json({ message: "Forbidden" });
-      return;
+      throw new AppError(403, "Forbidden");
     }
 
     res.status(200).json({ room });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     const message = error instanceof Error ? error.message : "Failed to fetch room";
-    const status = message === "Unauthorized" ? 401 : 400;
-    res.status(status).json({ message });
+    throw new AppError(400, message);
   }
 }
 
 export async function getRoomVoiceToken(req: Request, res: Response): Promise<void> {
+  const user = await requireUser(req);
+  const roomId = readRoomId(req);
+
+  if (!roomId) {
+    throw new AppError(400, "roomId is required");
+  }
+
   try {
-    const user = await requireUser(req);
-    const roomId = readRoomId(req);
-
-    if (!roomId) {
-      res.status(400).json({ message: "roomId is required" });
-      return;
-    }
-
     const room = multiplayerRoomService.getRoom(roomId);
-
     if (!room) {
-      res.status(404).json({ message: "Room not found" });
-      return;
+      throw new AppError(404, "Room not found");
     }
 
     if (!multiplayerRoomService.isParticipant(roomId, user.userId)) {
-      res.status(403).json({ message: "Forbidden" });
-      return;
+      throw new AppError(403, "Forbidden");
     }
 
     const { url, apiKey, apiSecret } = readLivekitConfig();
@@ -158,8 +140,8 @@ export async function getRoomVoiceToken(req: Request, res: Response): Promise<vo
       roomId,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     const message = error instanceof Error ? error.message : "Failed to create voice token";
-    const status = message === "Unauthorized" ? 401 : message === "Voice chat is not configured" ? 500 : 400;
-    res.status(status).json({ message });
+    throw new AppError(400, message);
   }
 }

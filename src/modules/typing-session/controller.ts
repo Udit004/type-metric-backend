@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AppError } from "../../utils/AppError.js";
 
 import { CompletionReason } from "../../models/TypingSession.model.js";
 import { createTypingSession } from "./service.js";
@@ -34,83 +35,71 @@ function isNonNegativeNumber(value: unknown): value is number {
 }
 
 export async function create(req: Request, res: Response): Promise<void> {
+  if (!req.userId) {
+    throw new AppError(401, "Unauthorized");
+  }
+
+  const body = readBody(req.body);
+
+  if (!body.promptText || typeof body.promptText !== "string") {
+    throw new AppError(400, "promptText is required");
+  }
+
+  if (typeof body.typedText !== "string") {
+    throw new AppError(400, "typedText is required");
+  }
+
+  if (
+    !isNonNegativeNumber(body.totalCharacters) ||
+    !Number.isInteger(body.totalCharacters) ||
+    body.totalCharacters <= 0
+  ) {
+    throw new AppError(400, "totalCharacters must be a positive integer");
+  }
+
+  if (
+    !isNonNegativeNumber(body.typedCharactersCount) ||
+    !Number.isInteger(body.typedCharactersCount)
+  ) {
+    throw new AppError(400, "typedCharactersCount must be a non-negative integer");
+  }
+
+  if (
+    !isNonNegativeNumber(body.correctCharacters) ||
+    !Number.isInteger(body.correctCharacters)
+  ) {
+    throw new AppError(400, "correctCharacters must be a non-negative integer");
+  }
+
+  if (!isNonNegativeNumber(body.mistakes) || !Number.isInteger(body.mistakes)) {
+    throw new AppError(400, "mistakes must be a non-negative integer");
+  }
+
+  if (!isNonNegativeNumber(body.accuracy) || body.accuracy > 100) {
+    throw new AppError(400, "accuracy must be between 0 and 100");
+  }
+
+  if (!isNonNegativeNumber(body.wpm)) {
+    throw new AppError(400, "wpm must be a non-negative number");
+  }
+
+  if (!isNonNegativeNumber(body.elapsedMs)) {
+    throw new AppError(400, "elapsedMs must be a non-negative number");
+  }
+
+  if (
+    !isNonNegativeNumber(body.durationSeconds) ||
+    !Number.isInteger(body.durationSeconds) ||
+    body.durationSeconds <= 0
+  ) {
+    throw new AppError(400, "durationSeconds must be a positive integer");
+  }
+
+  if (!isValidCompletionReason(body.completionReason)) {
+    throw new AppError(400, "completionReason must be time_up or text_completed");
+  }
+
   try {
-    if (!req.userId) {
-      res.status(401).json({ message: "Unauthorized" });
-      return;
-    }
-
-    const body = readBody(req.body);
-
-    if (!body.promptText || typeof body.promptText !== "string") {
-      res.status(400).json({ message: "promptText is required" });
-      return;
-    }
-
-    if (typeof body.typedText !== "string") {
-      res.status(400).json({ message: "typedText is required" });
-      return;
-    }
-
-    if (
-      !isNonNegativeNumber(body.totalCharacters) ||
-      !Number.isInteger(body.totalCharacters) ||
-      body.totalCharacters <= 0
-    ) {
-      res.status(400).json({ message: "totalCharacters must be a positive integer" });
-      return;
-    }
-
-    if (
-      !isNonNegativeNumber(body.typedCharactersCount) ||
-      !Number.isInteger(body.typedCharactersCount)
-    ) {
-      res.status(400).json({ message: "typedCharactersCount must be a non-negative integer" });
-      return;
-    }
-
-    if (
-      !isNonNegativeNumber(body.correctCharacters) ||
-      !Number.isInteger(body.correctCharacters)
-    ) {
-      res.status(400).json({ message: "correctCharacters must be a non-negative integer" });
-      return;
-    }
-
-    if (!isNonNegativeNumber(body.mistakes) || !Number.isInteger(body.mistakes)) {
-      res.status(400).json({ message: "mistakes must be a non-negative integer" });
-      return;
-    }
-
-    if (!isNonNegativeNumber(body.accuracy) || body.accuracy > 100) {
-      res.status(400).json({ message: "accuracy must be between 0 and 100" });
-      return;
-    }
-
-    if (!isNonNegativeNumber(body.wpm)) {
-      res.status(400).json({ message: "wpm must be a non-negative number" });
-      return;
-    }
-
-    if (!isNonNegativeNumber(body.elapsedMs)) {
-      res.status(400).json({ message: "elapsedMs must be a non-negative number" });
-      return;
-    }
-
-    if (
-      !isNonNegativeNumber(body.durationSeconds) ||
-      !Number.isInteger(body.durationSeconds) ||
-      body.durationSeconds <= 0
-    ) {
-      res.status(400).json({ message: "durationSeconds must be a positive integer" });
-      return;
-    }
-
-    if (!isValidCompletionReason(body.completionReason)) {
-      res.status(400).json({ message: "completionReason must be time_up or text_completed" });
-      return;
-    }
-
     const session = await createTypingSession({
       userId: req.userId,
       promptText: body.promptText,
@@ -128,8 +117,7 @@ export async function create(req: Request, res: Response): Promise<void> {
 
     res.status(201).json({ session });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to save typing session";
-    res.status(400).json({ message });
+    const message = error instanceof Error ? error.message : "Failed to save typing session";
+    throw new AppError(400, message);
   }
 }

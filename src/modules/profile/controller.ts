@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AppError } from "../../utils/AppError.js";
 
 import {
   acceptFriendRequest,
@@ -19,7 +20,7 @@ import {
 
 function requireUserId(req: Request): string {
   if (!req.userId) {
-    throw new Error("Unauthorized");
+    throw new AppError(401, "Unauthorized");
   }
 
   return req.userId;
@@ -41,7 +42,10 @@ function readParam(value: string | string[] | undefined): string | null {
   return null;
 }
 
-function handleError(res: Response, error: unknown, fallbackMessage: string): void {
+function throwAppError(error: unknown, fallbackMessage: string): never {
+  if (error instanceof AppError) {
+    throw error;
+  }
   const message = error instanceof Error ? error.message : fallbackMessage;
   const status =
     message === "Unauthorized"
@@ -55,7 +59,7 @@ function handleError(res: Response, error: unknown, fallbackMessage: string): vo
         ? 400
         : 500;
 
-  res.status(status).json({ message });
+  throw new AppError(status, message);
 }
 
 export async function getMyProfile(req: Request, res: Response): Promise<void> {
@@ -64,7 +68,7 @@ export async function getMyProfile(req: Request, res: Response): Promise<void> {
     const profile = await getProfileDashboard(userId);
     res.status(200).json(profile);
   } catch (error) {
-    handleError(res, error, "Failed to fetch profile");
+    throwAppError(error, "Failed to fetch profile");
   }
 }
 
@@ -74,7 +78,7 @@ export async function updateMyProfile(req: Request, res: Response): Promise<void
     const profile = await updateProfileIdentity(userId, readBody(req.body));
     res.status(200).json({ profile });
   } catch (error) {
-    handleError(res, error, "Failed to update profile");
+    throwAppError(error, "Failed to update profile");
   }
 }
 
@@ -84,7 +88,7 @@ export async function updateMyProfileIdentity(req: Request, res: Response): Prom
     const profile = await updateProfileIdentity(userId, readBody(req.body));
     res.status(200).json({ profile });
   } catch (error) {
-    handleError(res, error, "Failed to update profile identity");
+    throwAppError(error, "Failed to update profile identity");
   }
 }
 
@@ -97,7 +101,7 @@ export async function updateMyUsername(req: Request, res: Response): Promise<voi
     );
     res.status(200).json({ profile });
   } catch (error) {
-    handleError(res, error, "Failed to update username");
+    throwAppError(error, "Failed to update username");
   }
 }
 
@@ -109,14 +113,13 @@ export async function checkMyUsernameAvailability(req: Request, res: Response): 
       typeof req.query.username === "string" ? req.query.username : undefined;
 
     if (!username || username.trim().length === 0) {
-      res.status(400).json({ message: "username is required" });
-      return;
+      throw new AppError(400, "username is required");
     }
 
     const availability = await checkUsernameAvailability(userId, { username });
     res.status(200).json(availability);
   } catch (error) {
-    handleError(res, error, "Failed to check username availability");
+    throwAppError(error, "Failed to check username availability");
   }
 }
 
@@ -127,7 +130,7 @@ export async function searchUsers(req: Request, res: Response): Promise<void> {
     const users = await searchProfileUsers(userId, query);
     res.status(200).json({ users });
   } catch (error) {
-    handleError(res, error, "Failed to search users");
+    throwAppError(error, "Failed to search users");
   }
 }
 
@@ -137,14 +140,13 @@ export async function createFriendRequest(req: Request, res: Response): Promise<
     const body = readBody<{ targetUserId?: unknown }>(req.body);
 
     if (typeof body.targetUserId !== "string" || body.targetUserId.trim().length === 0) {
-      res.status(400).json({ message: "targetUserId is required" });
-      return;
+      throw new AppError(400, "targetUserId is required");
     }
 
     const result = await sendFriendRequest(requesterUserId, body.targetUserId);
     res.status(201).json(result);
   } catch (error) {
-    handleError(res, error, "Failed to send friend request");
+    throwAppError(error, "Failed to send friend request");
   }
 }
 
@@ -154,14 +156,13 @@ export async function acceptRequest(req: Request, res: Response): Promise<void> 
     const requestId = readParam(req.params.requestId);
 
     if (!requestId) {
-      res.status(400).json({ message: "requestId is required" });
-      return;
+      throw new AppError(400, "requestId is required");
     }
 
     await acceptFriendRequest(userId, requestId);
     res.status(200).json({ ok: true });
   } catch (error) {
-    handleError(res, error, "Failed to accept friend request");
+    throwAppError(error, "Failed to accept friend request");
   }
 }
 
@@ -171,14 +172,13 @@ export async function deleteRequest(req: Request, res: Response): Promise<void> 
     const requestId = readParam(req.params.requestId);
 
     if (!requestId) {
-      res.status(400).json({ message: "requestId is required" });
-      return;
+      throw new AppError(400, "requestId is required");
     }
 
     await deleteFriendRequest(userId, requestId);
     res.status(200).json({ ok: true });
   } catch (error) {
-    handleError(res, error, "Failed to remove friend request");
+    throwAppError(error, "Failed to remove friend request");
   }
 }
 
@@ -188,14 +188,13 @@ export async function deleteFriend(req: Request, res: Response): Promise<void> {
     const friendUserId = readParam(req.params.friendUserId);
 
     if (!friendUserId) {
-      res.status(400).json({ message: "friendUserId is required" });
-      return;
+      throw new AppError(400, "friendUserId is required");
     }
 
     await removeFriend(userId, friendUserId);
     res.status(200).json({ ok: true });
   } catch (error) {
-    handleError(res, error, "Failed to remove friend");
+    throwAppError(error, "Failed to remove friend");
   }
 }
 
@@ -204,14 +203,13 @@ export async function getPublicProfileByUsername(req: Request, res: Response): P
     const username = readParam(req.params.username);
 
     if (!username) {
-      res.status(400).json({ message: "username is required" });
-      return;
+      throw new AppError(400, "username is required");
     }
 
     const profile = await getPublicProfile(username);
     res.status(200).json(profile);
   } catch (error) {
-    handleError(res, error, "Failed to fetch public profile");
+    throwAppError(error, "Failed to fetch public profile");
   }
 }
 
@@ -220,8 +218,7 @@ export async function getPublicActivity(req: Request, res: Response): Promise<vo
     const username = readParam(req.params.username);
 
     if (!username) {
-      res.status(400).json({ message: "username is required" });
-      return;
+      throw new AppError(400, "username is required");
     }
 
     const activities = await getPublicProfileActivity(username, {
@@ -230,7 +227,7 @@ export async function getPublicActivity(req: Request, res: Response): Promise<vo
     });
     res.status(200).json({ activities });
   } catch (error) {
-    handleError(res, error, "Failed to fetch public activity");
+    throwAppError(error, "Failed to fetch public activity");
   }
 }
 
@@ -239,14 +236,13 @@ export async function getPublicBadgeCollection(req: Request, res: Response): Pro
     const username = readParam(req.params.username);
 
     if (!username) {
-      res.status(400).json({ message: "username is required" });
-      return;
+      throw new AppError(400, "username is required");
     }
 
     const badges = await getPublicProfileBadges(username);
     res.status(200).json({ badges });
   } catch (error) {
-    handleError(res, error, "Failed to fetch public badges");
+    throwAppError(error, "Failed to fetch public badges");
   }
 }
 
@@ -255,8 +251,7 @@ export async function uploadMyAvatar(req: Request, res: Response): Promise<void>
 
   const file = req.file;
   if (!file || !file.buffer) {
-    res.status(400).json({ message: "avatar file is required" });
-    return;
+    throw new AppError(400, "avatar file is required");
   }
 
   try {
@@ -264,19 +259,10 @@ export async function uploadMyAvatar(req: Request, res: Response): Promise<void>
     res.status(200).json({ ok: true });
   } catch (error) {
     if (error instanceof Error) {
-      res.status(500).json({ message: error.message, name: error.name });
-      return;
+      throw new AppError(500, error.message);
     }
-
-    // Cloudinary/multer sometimes rejects with a non-Error payload; surface it for debugging
-    res.status(500).json({
-      message: "Unknown upload error",
-      details:
-        typeof error === "string"
-          ? error
-          : error
-          ? JSON.stringify(error)
-          : null,
-    });
+    
+    const details = typeof error === "string" ? error : (error ? JSON.stringify(error) : null);
+    throw new AppError(500, `Unknown upload error: ${details}`);
   }
 }

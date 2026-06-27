@@ -1,21 +1,27 @@
 import { NextFunction, Request, Response } from "express";
 import logger from "../logger.js";
+import { AppError } from "../utils/AppError.js";
 
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction): void {
-  // Log the error
-  logger.error(
-    {
-      err,
-      method: req.method,
-      url: req.originalUrl,
-      body: req.body,
-    },
-    err.message || "Internal Server Error"
-  );
+  const status = err.statusCode || err.status || 500;
+  
+  const logContext = {
+    err,
+    method: req.method,
+    url: req.originalUrl,
+    body: req.body,
+  };
 
-  // Send a generic response in production
-  const status = err.status || 500;
-  const message = process.env.NODE_ENV === "production" ? "Internal Server Error" : err.message;
+  if (status >= 500) {
+    logger.error(logContext, err.message || "Internal Server Error");
+  } else {
+    logger.info(logContext, err.message || "Client Error");
+  }
+
+  // If it's a known AppError or we are in development, send the actual message.
+  // Otherwise, hide the message in production to prevent leaking sensitive info.
+  const isSafeMessage = err instanceof AppError || process.env.NODE_ENV !== "production";
+  const message = isSafeMessage ? err.message : "Internal Server Error";
   
   res.status(status).json({
     error: {

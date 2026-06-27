@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AppError } from "../../utils/AppError.js";
 
 import { LudoService } from "./service/ludo.service.js";
 import { LudoRoomsStore } from "./state/rooms-store.js";
@@ -12,20 +13,16 @@ function generateRoomCode6(): string {
   return out;
 }
 
-// Create a process-local store/service for REST calls.
-// This matches the in-memory approach used by the websocket handlers.
 import { sharedLudoStore as store, sharedLudoService as service } from "./service/ludo.service.js";
 
 async function requireUser(req: Request): Promise<{ userId: string; name: string }> {
-  if (!req.userId) throw new Error("Unauthorized");
+  if (!req.userId) throw new AppError(401, "Unauthorized");
 
-  // requireAuth only guarantees req.userId in your current middleware.
-  // Fetch user name from DB.
   const user = await (await import("../../models/User.model.js")).default.findById(req.userId)
     .select("name")
     .lean();
 
-  if (!user) throw new Error("Unauthorized");
+  if (!user) throw new AppError(401, "Unauthorized");
 
   return { userId: req.userId, name: user.name };
 }
@@ -35,57 +32,37 @@ function readBody(body: unknown): { roomId?: unknown; player_count?: unknown } {
   return body as { roomId?: unknown; player_count?: unknown };
 }
 
-
-
 export async function createRoom(req: Request, res: Response): Promise<void> {
-  try {
-    const user = await requireUser(req);
-    const body = readBody(req.body);
+  const user = await requireUser(req);
+  const body = readBody(req.body);
 
-    const requestedRoomId = typeof body.roomId === "string" && body.roomId.trim().length > 0 ? body.roomId.trim() : undefined;
+  const requestedRoomId = typeof body.roomId === "string" && body.roomId.trim().length > 0 ? body.roomId.trim() : undefined;
+  const roomId = requestedRoomId ?? generateRoomCode6();
 
-    // If host provides roomId, trust it. Otherwise generate a simple 6-char code.
-    const roomId = requestedRoomId ?? generateRoomCode6();
+  const requestedPlayerCount = typeof body.player_count === "number" ? body.player_count : undefined;
+  const player_count = requestedPlayerCount != null ? requestedPlayerCount : 2;
 
+  const safePlayerCount = Math.max(2, Math.min(4, Math.floor(player_count)));
 
+  const room = service.createRoom(roomId, { userId: user.userId, name: user.name }, safePlayerCount);
 
-
-    // Capacity enforcement (authoritative on backend)
-    // Accept only sensible player counts.
-    const requestedPlayerCount = typeof body.player_count === "number" ? body.player_count : undefined;
-    const player_count = requestedPlayerCount != null ? requestedPlayerCount : 2;
-
-    const safePlayerCount = Math.max(2, Math.min(4, Math.floor(player_count)));
-
-    const room = service.createRoom(roomId, { userId: user.userId, name: user.name }, safePlayerCount);
-
-
-    res.status(201).json({ roomId: room.roomId, hostId: room.hostId });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to create room";
-    const status = message === "Unauthorized" ? 401 : 400;
-    res.status(status).json({ message });
-  }
+  res.status(201).json({ roomId: room.roomId, hostId: room.hostId });
 }
 
 export async function joinRoom(req: Request, res: Response): Promise<void> {
+  const user = await requireUser(req);
+  const roomId = typeof req.params.roomId === "string" ? req.params.roomId : null;
+
+  if (!roomId) {
+    throw new AppError(400, "roomId is required");
+  }
+
   try {
-    const user = await requireUser(req);
-    const roomId = typeof req.params.roomId === "string" ? req.params.roomId : null;
-
-    if (!roomId) {
-      res.status(400).json({ message: "roomId is required" });
-      return;
-    }
-
     service.joinRoom(roomId, { userId: user.userId, name: user.name });
-
-    // Minimal response for Godot to get the room id / basic join ack.
-    res.status(200).json({ roomId, ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to join room";
-    const status = message === "Unauthorized" ? 401 : 400;
-    res.status(status).json({ message });
+    throw new AppError(400, message);
   }
-}
 
+  res.status(200).json({ roomId, ok: true });
+}

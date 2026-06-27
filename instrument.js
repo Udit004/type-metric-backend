@@ -25,6 +25,16 @@ Sentry.init({
     // userInfo: false,
     // httpBodies: [],
   },
+  beforeSend(event, hint) {
+    const error = hint.originalException;
+    if (error && typeof error === 'object' && 'statusCode' in error) {
+      if (typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500) {
+        // Drop client errors (e.g. 400 Invalid email or password)
+        return null;
+      }
+    }
+    return event;
+  },
 });
 
 // Profiling happens automatically after setting it up with `Sentry.init()`.

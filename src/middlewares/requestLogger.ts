@@ -6,16 +6,22 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
   res.on("finish", () => {
     const durationMs = Date.now() - start;
-    logger.info(
-      {
+
+    const logData = {
         method: req.method,
         url: req.originalUrl,
         status: res.statusCode,
         durationMs,
-      },
-      `${req.method} ${req.originalUrl} ${res.statusCode} - ${durationMs}ms`
-    );
-  });
+    };
+
+    if (res.statusCode >= 500) {
+        logger.error(logData);
+    } else if (res.statusCode >= 400) {
+        logger.warn(logData);
+    } else {
+        logger.info(logData);
+    }
+});
 
   next();
 }

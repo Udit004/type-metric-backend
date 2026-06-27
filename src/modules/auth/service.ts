@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { ensureUserIdentityFields } from "../gamification/service.js";
 import { generateUniqueUsername } from "../gamification/username.js";
 import User from "../../models/User.model.js";
+import { AppError } from "../../utils/AppError.js";
 
 interface RegisterInput {
 	name: string;
@@ -198,13 +199,13 @@ export async function loginUser(payload: LoginInput): Promise<AuthResult> {
 	const user = await User.findOne({ email: payload.email.toLowerCase() });
 
 	if (!user) {
-		throw new Error("Invalid email or password");
+		throw new AppError(401,"Invalid email or password");
 	}
 
 	const isPasswordValid = await user.comparePassword(payload.password);
 
 	if (!isPasswordValid) {
-		throw new Error("Invalid email or password");
+		throw new AppError(401,"Invalid email or password");
 	}
 
 	const token = signToken(String(user._id));
@@ -220,7 +221,7 @@ export async function getCurrentUser(userId: string): Promise<AuthUser> {
 	const user = await ensureUserIdentityFields(userId);
 
 	if (!user) {
-		throw new Error("User not found");
+		throw new AppError(401,"User not found");
 	}
 
 	return toAuthUser(user);
