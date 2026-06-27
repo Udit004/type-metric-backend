@@ -1,8 +1,10 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import logger from "./logger.js";
 
 import { requestLogger } from "./middlewares/requestLogger.js";
+import { errorHandler } from "./middlewares/errorHandler.js";
 import authRouter from "./modules/auth/route.js";
 import { googleCallback, googleStart } from "./modules/auth/controller.js";
 import leaderboardRouter from "./modules/leaderboard/route.js";
@@ -21,11 +23,13 @@ app.use(requestLogger);
 
 app.get("/", (_req, res) => {
   res.status(200).json({ message: "Welcome to the TypeMetric API!" });
+  logger.info("Hello from Logtail");
 });
 
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ ok: true, service: "typemetric-backend" });
+  logger.info("Health check");
 });
 
 // app.get("/auth/google", googleStart);
@@ -42,5 +46,7 @@ app.use("/api/v1/ludo", ludoRouter);
 app.use((_req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
+
+app.use(errorHandler);
 
 export default app;

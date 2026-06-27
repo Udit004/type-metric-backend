@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { createServer } from "http";
 
 import app from "./app.js";
+import logger from "./logger.js";
 import { connectDB } from "./config/db.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { attachMultiplayerGateway } from "./modules/multiplayer/gateway.js";
@@ -21,7 +22,7 @@ async function startServer(): Promise<void> {
     const httpServer = createServer(app);
 
     attachMultiplayerGateway(httpServer);
-    console.log("[BOOT] Attaching multiplayer WS gateway at /ws");
+    logger.info("[BOOT] Attaching multiplayer WS gateway at /ws");
 
 
 
@@ -30,14 +31,14 @@ async function startServer(): Promise<void> {
     httpServer.listen(port, () => {
 
 
-      console.log(`API running on http://localhost:${port}`);
-      console.log(`WebSocket multiplayer running on ws://localhost:${port}/ws`);
+      logger.info(`API running on http://localhost:${port}`);
+      logger.info(`WebSocket multiplayer running on ws://localhost:${port}/ws`);
 
     });
 
 
   } catch (error) {
-    console.error("Server startup failed", error);
+    logger.error({ err: error }, "Server startup failed");
     process.exit(1);
   }
 }
@@ -50,6 +51,16 @@ process.on("SIGINT", async () => {
 process.on("SIGTERM", async () => {
   await disconnectRedis();
   process.exit(0);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal(error, "Uncaught Exception");
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.fatal({ reason, promise }, "Unhandled Rejection");
+  process.exit(1);
 });
 
 void startServer();
