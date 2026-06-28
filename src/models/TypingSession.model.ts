@@ -1,4 +1,5 @@
 import { HydratedDocument, Model, Schema, Types, model } from "mongoose";
+import crypto from "crypto";
 
 export type CompletionReason = "time_up" | "text_completed";
 
@@ -15,6 +16,8 @@ export interface ITypingSession {
   elapsedMs: number;
   durationSeconds: number;
   completionReason: CompletionReason;
+  shareId: string;
+  isPublic: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -86,6 +89,16 @@ const typingSessionSchema = new Schema<ITypingSession, TypingSessionModel>(
       enum: ["time_up", "text_completed"],
       required: true,
     },
+    shareId: {
+      type: String,
+      required: true,
+      unique: true,
+      default: () => crypto.randomBytes(5).toString("hex"),
+    },
+    isPublic: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,
@@ -93,6 +106,7 @@ const typingSessionSchema = new Schema<ITypingSession, TypingSessionModel>(
 );
 
 typingSessionSchema.index({ user: 1, createdAt: -1 });
+typingSessionSchema.index({ shareId: 1 }, { unique: true });
 typingSessionSchema.index({
   user: 1,
   wpm: -1,

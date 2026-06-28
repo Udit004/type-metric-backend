@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { AppError } from "../../shared/utils/AppError.js";
 
 import { CompletionReason } from "../../models/TypingSession.model.js";
-import { createTypingSession } from "./service.js";
+import { createTypingSession, getSharedSession } from "./service.js";
 
 interface SessionPayload {
   promptText?: string;
@@ -119,5 +119,29 @@ export async function create(req: Request, res: Response): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to save typing session";
     throw new AppError(400, message);
+  }
+}
+
+export async function getShared(req: Request, res: Response): Promise<void> {
+  const { shareId } = req.params;
+
+  if (!shareId || typeof shareId !== "string") {
+    throw new AppError(400, "shareId must be a valid string");
+  }
+
+  try {
+    const session = await getSharedSession(shareId);
+
+    if (!session) {
+      throw new AppError(404, "Typing session not found or is private");
+    }
+
+    res.status(200).json(session);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "Failed to fetch shared typing session";
+    throw new AppError(500, message);
   }
 }

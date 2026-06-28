@@ -19,6 +19,7 @@ export interface CreateTypingSessionInput {
   completionReason: CompletionReason;
 }
 
+
 export interface TypingSessionResponse {
   id: string;
   userId: string;
@@ -27,6 +28,7 @@ export interface TypingSessionResponse {
   mistakes: number;
   elapsedMs: number;
   createdAt: Date;
+  shareId: string;
 }
 
 export async function createTypingSession(
@@ -67,5 +69,43 @@ export async function createTypingSession(
     mistakes: session.mistakes,
     elapsedMs: session.elapsedMs,
     createdAt: session.createdAt,
+    shareId: session.shareId,
+  };
+}
+
+export interface SharedTypingSessionResponse {
+  username: string;
+  avatar: string | null;
+  wpm: number;
+  accuracy: number;
+  consistency: number;
+  rawWpm: number;
+  duration: number;
+  language: string;
+  createdAt: Date;
+  shareUrl: string;
+}
+
+export async function getSharedSession(shareId: string): Promise<SharedTypingSessionResponse | null> {
+  const session = await TypingSession.findOne({ shareId, isPublic: true }).populate("user", "username avatarImageUrl");
+  if (!session) {
+    return null;
+  }
+  
+  const user = session.user as any;
+  const username = user?.username || "Unknown";
+  const avatar = user?.avatarImageUrl || null;
+
+  return {
+    username,
+    avatar,
+    wpm: session.wpm,
+    accuracy: session.accuracy,
+    consistency: 100, // Fallback since it's not tracked
+    rawWpm: session.wpm, // Fallback
+    duration: session.durationSeconds,
+    language: "english", // Fallback
+    createdAt: session.createdAt,
+    shareUrl: `https://typemetric.vercel.app/result/${session.shareId}`,
   };
 }
