@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { AppError } from "../../utils/AppError.js";
+import { AppError } from "../../shared/utils/AppError.js";
 
 import {
   acceptFriendRequest,
@@ -51,11 +51,11 @@ function throwAppError(error: unknown, fallbackMessage: string): never {
     message === "Unauthorized"
       ? 401
       : message.includes("not found") ||
-          message.includes("required") ||
-          message.includes("already") ||
-          message.includes("cannot") ||
-          message.includes("must be") ||
-          message.includes("Invalid")
+        message.includes("required") ||
+        message.includes("already") ||
+        message.includes("cannot") ||
+        message.includes("must be") ||
+        message.includes("Invalid")
         ? 400
         : 500;
 
@@ -261,7 +261,7 @@ export async function uploadMyAvatar(req: Request, res: Response): Promise<void>
     if (error instanceof Error) {
       throw new AppError(500, error.message);
     }
-    
+
     const details = typeof error === "string" ? error : (error ? JSON.stringify(error) : null);
     throw new AppError(500, `Unknown upload error: ${details}`);
   }

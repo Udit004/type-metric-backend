@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { AccessToken } from "livekit-server-sdk";
-import { AppError } from "../../utils/AppError.js";
+import { AppError } from "../../shared/utils/AppError.js";
 
 import User from "../../models/User.model.js";
 import { multiplayerRoomService } from "./service.js";

@@ -3,10 +3,11 @@ import dotenv from "dotenv";
 import { createServer } from "http";
 
 import app from "./app.js";
-import logger from "./logger.js";
+import logger from "./core/logger/logger.js";
 import { connectDB } from "./config/db.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { attachMultiplayerGateway } from "./modules/multiplayer/gateway.js";
+import "./core/events/registerListeners.js";
 
 
 

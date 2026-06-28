@@ -2,7 +2,7 @@ import cors from "cors";
 import express from "express";
 import * as Sentry from "@sentry/node";
 import helmet from "helmet";
-import logger from "./logger.js";
+import logger from "./core/logger/logger.js";
 
 import { requestLogger } from "./middlewares/requestLogger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";

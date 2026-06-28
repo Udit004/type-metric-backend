@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { AppError } from "../../utils/AppError.js";
+import { AppError } from "../../shared/utils/AppError.js";
 
 import {
 	buildFrontendGoogleCallbackUrl,
@@ -9,7 +9,9 @@ import {
 	loginWithGoogleCode,
 	registerUser,
 } from "./service.js";
-import { sendTelegramMessage } from "../../TelegramBot.js";
+import { sendTelegramMessage } from "../../core/notifications/TelegramBot.js";
+import { eventBus } from "../../core/events/eventBus.js";
+import { Events } from "../../core/events/eventNames.js";
 
 function readBody(body: unknown): { name?: string; email?: string; password?: string } {
 	if (!body || typeof body !== "object") {
@@ -27,6 +29,9 @@ export async function register(req: Request, res: Response): Promise<void> {
 	}
 
 	const result = await registerUser({ name, email, password });
+
+	eventBus.emit(Events.USER_CREATED, result.user);
+
 	res.status(201).json(result);
 }
 
@@ -39,11 +44,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
 	const result = await loginUser({ email, password });
 
-	await sendTelegramMessage(`
-		🎉 New User
-		Name: ${result.user.name} 
-		Email: ${email}
-	`);
+	eventBus.emit(Events.USER_LOGIN, result.user);
 
 	res.status(200).json(result);
 }

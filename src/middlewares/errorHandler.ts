@@ -1,10 +1,10 @@
 import { NextFunction, Request, Response } from "express";
-import logger from "../logger.js";
-import { AppError } from "../utils/AppError.js";
+import logger from "../core/logger/logger.js";
+import { AppError } from "../shared/utils/AppError.js";
 
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction): void {
   const status = err.statusCode || err.status || 500;
-  
+
   const logContext = {
     err,
     method: req.method,
@@ -22,7 +22,7 @@ export function errorHandler(err: any, req: Request, res: Response, next: NextFu
   // Otherwise, hide the message in production to prevent leaking sensitive info.
   const isSafeMessage = err instanceof AppError || process.env.NODE_ENV !== "production";
   const message = isSafeMessage ? err.message : "Internal Server Error";
-  
+
   res.status(status).json({
     error: {
       message,

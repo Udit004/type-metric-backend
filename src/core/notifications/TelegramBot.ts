@@ -1,5 +1,3 @@
-// services/telegram.service.js
-
 import axios from "axios";
 import dotenv from 'dotenv';
 dotenv.config();
@@ -18,8 +16,7 @@ export async function sendTelegramMessage(message: String) {
                 parse_mode: "Markdown"
             }
         );
-
-        console.log(response);
+        // console.log(response); // Removed to prevent terminal clutter
     } catch (err: any) {
         console.error("Telegram Error:");
         console.error(err.response?.data);

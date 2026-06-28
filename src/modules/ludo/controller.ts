@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { AppError } from "../../utils/AppError.js";
+import { AppError } from "../../shared/utils/AppError.js";
 
 import { LudoService } from "./service/ludo.service.js";
 import { LudoRoomsStore } from "./state/rooms-store.js";
