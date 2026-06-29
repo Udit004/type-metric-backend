@@ -19,7 +19,6 @@ export async function processActivityJob(job: Job) {
     }) as Record<string, string>)[type] || '📝';
 
     const dateStr = new Date(timestamp).toLocaleString();
-    
     let formattedMessage = `*${emoji} System Activity*
 `;
     formattedMessage += `*Type:* ${type}
