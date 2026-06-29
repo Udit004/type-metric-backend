@@ -8,6 +8,9 @@ import { connectDB } from "./config/db.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { attachMultiplayerGateway } from "./modules/multiplayer/gateway.js";
 import "./core/events/registerListeners.js";
+import { startNotificationWorker } from "./core/queue/workers/notification.worker.js";
+import { WorkerManager } from "./core/queue/workerManager.js";
+import { QueueManager } from "./core/queue/queueManager.js";
 
 
 
@@ -26,10 +29,9 @@ async function startServer(): Promise<void> {
     attachMultiplayerGateway(httpServer);
     logger.info("[BOOT] Attaching multiplayer WS gateway at /ws");
 
-
-
-
-
+    // Start background workers
+    startNotificationWorker();
+    logger.info("[BOOT] Started Notification Worker");
     httpServer.listen(port, () => {
 
 
@@ -46,11 +48,15 @@ async function startServer(): Promise<void> {
 }
 
 process.on("SIGINT", async () => {
+  await WorkerManager.closeAll();
+  await QueueManager.closeAll();
   await disconnectRedis();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
+  await WorkerManager.closeAll();
+  await QueueManager.closeAll();
   await disconnectRedis();
   process.exit(0);
 });
