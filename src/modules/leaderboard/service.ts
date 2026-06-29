@@ -16,6 +16,8 @@ import {
   LeaderboardResponse,
   LEADERBOARD_WINDOW,
 } from "./types.js";
+import { eventBus } from "../../core/events/eventBus.js";
+import { Events } from "../../core/events/eventNames.js";
 
 interface SoloAggregateRow {
   userId: string;
@@ -254,6 +256,12 @@ export async function rebuildLeaderboardSnapshot(
   if (redis?.isReady) {
     await redis.set(getSnapshotCacheKey(board), serializeSnapshot(snapshot));
   }
+
+  // Emit event for background workers
+  eventBus.emit(Events.LEADERBOARD_UPDATED, {
+    board,
+    totalEntries: rankedEntries.length
+  });
 
   return snapshot;
 }
