@@ -14,7 +14,7 @@ export class WorkerManager {
     }
 
     const worker = new Worker(name, processor, {
-      connection,
+      connection: connection as any,
       ...options,
     });
 
@@ -22,8 +22,8 @@ export class WorkerManager {
       logger.info(`Worker for queue ${name} is ready and listening.`);
     });
 
-    worker.on('error', (err) => {
-      logger.error(`Worker for queue ${name} encountered an error:`, err);
+    worker.on('error', (err: any) => {
+      logger.error(err, `Worker for queue ${name} encountered an error:`);
     });
 
     this.workers.set(name, worker);

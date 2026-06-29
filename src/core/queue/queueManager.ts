@@ -10,7 +10,7 @@ export class QueueManager {
   public static getQueue(name: string, defaultJobOptions?: QueueOptions['defaultJobOptions']): Queue {
     if (!this.queues.has(name)) {
       const queue = new Queue(name, {
-        connection,
+        connection: connection as any,
         defaultJobOptions: {
           attempts: 3,
           backoff: {

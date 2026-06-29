@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -11,6 +11,6 @@ export const connection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,
 });
 
-connection.on('error', (err) => {
+connection.on('error', (err: any) => {
   console.error('BullMQ Redis connection error:', err);
 });

@@ -1,8 +1,8 @@
 import { Job } from 'bullmq';
-import { WorkerManager } from '../workerManager';
-import { NOTIFICATION_QUEUE_NAME } from '../notifications/notification.queue';
-import { sendTelegramMessage } from '../../notifications/TelegramBot';
-import logger from '../../logger/logger';
+import { WorkerManager } from '../workerManager.js';
+import { NOTIFICATION_QUEUE_NAME } from '../notifications/notification.queue.js';
+import { sendTelegramMessage } from '../../notifications/TelegramBot.js';
+import logger from '../../logger/logger.js';
 
 export async function processNotificationJob(job: Job) {
   logger.info({ jobId: job.id, name: job.name }, `Job Started: ${job.name}`);

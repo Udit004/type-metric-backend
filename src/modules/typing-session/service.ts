@@ -1,8 +1,8 @@
 import TypingSession, {
   CompletionReason,
 } from "../../models/TypingSession.model.js";
-import { rebuildUserGamification } from "../gamification/service.js";
-import { refreshLeaderboardSnapshots } from "../leaderboard/service.js";
+import { eventBus } from "../../core/events/eventBus.js";
+import { Events } from "../../core/events/eventNames.js";
 
 export interface CreateTypingSessionInput {
   userId: string;
@@ -49,17 +49,11 @@ export async function createTypingSession(
     completionReason: payload.completionReason,
   });
 
-  try {
-    await rebuildUserGamification(payload.userId);
-  } catch (error) {
-    console.error("Failed to rebuild gamification after typing session", error);
-  }
-
-  try {
-    await refreshLeaderboardSnapshots(["solo", "combined"]);
-  } catch (error) {
-    console.error("Failed to refresh leaderboard after typing session", error);
-  }
+  // Trigger background updates asynchronously
+  eventBus.emit(Events.TYPING_COMPLETED, {
+    userId: payload.userId,
+    sessionId: String(session._id),
+  });
 
   return {
     id: String(session._id),

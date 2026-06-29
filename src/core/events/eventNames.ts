@@ -8,6 +8,9 @@ export const Events = {
 
     PAYMENT_SUCCESS: "payment.success",
 
-    TYPING_COMPLETED: "typing.completed"
+    TYPING_COMPLETED: "typing.completed",
+    
+    SYSTEM_ACTIVITY: "system.activity",
+    SYSTEM_ERROR: "system.error"
 
 } as const;

@@ -9,6 +9,9 @@ import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { attachMultiplayerGateway } from "./modules/multiplayer/gateway.js";
 import "./core/events/registerListeners.js";
 import { startNotificationWorker } from "./core/queue/workers/notification.worker.js";
+import { startGamificationWorker } from "./core/queue/workers/gamification.worker.js";
+import { startLeaderboardWorker } from "./core/queue/workers/leaderboard.worker.js";
+import { startActivityWorker } from "./core/queue/workers/activity.worker.js";
 import { WorkerManager } from "./core/queue/workerManager.js";
 import { QueueManager } from "./core/queue/queueManager.js";
 
@@ -32,6 +35,12 @@ async function startServer(): Promise<void> {
     // Start background workers
     startNotificationWorker();
     logger.info("[BOOT] Started Notification Worker");
+    startGamificationWorker();
+    logger.info("[BOOT] Started Gamification Worker");
+    startLeaderboardWorker();
+    logger.info("[BOOT] Started Leaderboard Worker");
+    startActivityWorker();
+    logger.info("[BOOT] Started Activity Worker");
     httpServer.listen(port, () => {
 
 
