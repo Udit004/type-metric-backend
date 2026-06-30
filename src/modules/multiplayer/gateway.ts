@@ -9,10 +9,10 @@ import User from "../../models/User.model.js";
 import { multiplayerRoomService } from "./service.js";
 import { MultiplayerServerEvent, MultiplayerUser, ProgressUpdateInput } from "./types.js";
 import { createLudoHandlers, type LudoClientEvent, type LudoServerEvent } from "../ludo/index.js";
-
-
+import { NotificationGateway } from "../../core/notifications/NotificationGateway.js";
 
 interface WsClientMessage {
+
   type?: string;
   payload?: unknown;
 }
@@ -242,6 +242,8 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
   });
 
   const contexts = new Map<WebSocket, SocketContext>();
+
+  NotificationGateway.setServer(wss, contexts);
 
   const sendToUser = (userId: string, message: unknown): void => {
     contexts.forEach((context, socket) => {
@@ -581,11 +583,11 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
                   throw new Error("Friend is offline");
                 }
 
-                sendToUser(targetUserId, {
-                  type: "notification:friend-play-request",
-                  payload: {
+                await NotificationGateway.sendNotification(targetUserId, {
+                  type: "FRIEND_REQUEST",
+                  message: `${context.user.name} wants to play a race with you!`,
+                  metadata: {
                     senderUserId: context.user.userId,
-                    senderName: context.user.name,
                     sentAt: Date.now(),
                   },
                 });
@@ -628,11 +630,11 @@ export function attachMultiplayerGateway(server: HttpServer): WebSocketServer {
                   throw new Error("Friend is offline");
                 }
 
-                sendToUser(targetUserId, {
-                  type: "notification:friend-room-invite",
-                  payload: {
+                await NotificationGateway.sendNotification(targetUserId, {
+                  type: "FRIEND_REQUEST",
+                  message: `${context.user.name} invited you to a race room!`,
+                  metadata: {
                     senderUserId: context.user.userId,
-                    senderName: context.user.name,
                     roomId,
                     sentAt: Date.now(),
                   },
