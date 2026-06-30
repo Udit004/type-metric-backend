@@ -17,6 +17,8 @@ import {
   updateMyProfile,
   uploadMyAvatar,
   checkMyUsernameAvailability,
+  registerFcmToken,
+  unregisterFcmToken,
 } from "./controller.js";
 
 
@@ -29,15 +31,10 @@ profileRouter.patch("/me", requireAuth, updateMyProfile);
 profileRouter.patch("/me/identity", requireAuth, updateMyProfileIdentity);
 profileRouter.patch("/me/username", requireAuth, updateMyUsername);
 
-profileRouter.get(
-  "/me/username/availability",
-  requireAuth,
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  checkMyUsernameAvailability
-);
+profileRouter.post("/me/fcm-token", requireAuth, registerFcmToken);
+profileRouter.post("/me/fcm-token/remove", requireAuth, unregisterFcmToken);
 
-
-
+profileRouter.get("/me/username/availability",requireAuth,checkMyUsernameAvailability);
 
 // Frontend calls: POST /api/v1/profile/me/avatar with multipart field "avatar"
 profileRouter.post("/me/avatar", requireAuth, avatarUpload.single("avatar"), uploadMyAvatar);

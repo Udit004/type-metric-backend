@@ -50,3 +50,20 @@ eventBus.on(
         }
     }
 );
+
+eventBus.on(
+    Events.FRIEND_REQUEST_SENT,
+    async (data: { recipientUserId: string; requesterName: string }) => {
+        try {
+            await NotificationGateway.sendNotification(data.recipientUserId, {
+                type: "FRIEND_REQUEST",
+                message: `${data.requesterName} sent you a friend request!`,
+                metadata: {
+                    requesterName: data.requesterName,
+                }
+            });
+        } catch (error) {
+            console.error("Error in notification trigger for FRIEND_REQUEST_SENT:", error);
+        }
+    }
+);

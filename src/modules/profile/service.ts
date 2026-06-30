@@ -26,6 +26,8 @@ import {
   getUserDisplayName,
 } from "../gamification/service.js";
 import { generateUniqueUsername, normalizeUsernameCandidate } from "../gamification/username.js";
+import { eventBus } from "../../core/events/eventBus.js";
+import { Events } from "../../core/events/eventNames.js";
 
 type FavoriteMode = "solo" | "multiplayer" | "hybrid";
 type ProfileVisibility = "public" | "private";
@@ -907,6 +909,15 @@ export async function sendFriendRequest(
     updatedAt: new Date(),
   });
 
+  const requester = await User.findById(requesterUserId).select("name displayName").lean();
+  const requesterName = requester ? (requester.displayName || requester.name) : "Someone";
+
+  eventBus.emit(Events.FRIEND_REQUEST_SENT, {
+    requesterUserId,
+    recipientUserId,
+    requesterName,
+  });
+
   return {
     requestId: String(request.insertedId),
   };
@@ -1006,5 +1017,23 @@ export async function updateMyAvatar(
 
   await User.findByIdAndUpdate(userId, {
     $set: { avatarImageUrl: uploadResult.secure_url },
+  });
+}
+
+export async function addFcmToken(userId: string, token: string): Promise<void> {
+  if (!token || token.trim().length === 0) {
+    throw new Error("FCM token is required");
+  }
+  await User.findByIdAndUpdate(userId, {
+    $addToSet: { fcmTokens: token }
+  });
+}
+
+export async function removeFcmToken(userId: string, token: string): Promise<void> {
+  if (!token || token.trim().length === 0) {
+    throw new Error("FCM token is required");
+  }
+  await User.findByIdAndUpdate(userId, {
+    $pull: { fcmTokens: token }
   });
 }

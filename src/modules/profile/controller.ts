@@ -15,6 +15,8 @@ import {
   updateProfileIdentity,
   updateProfileUsername,
   checkUsernameAvailability,
+  addFcmToken,
+  removeFcmToken,
 } from "./service.js";
 
 
@@ -264,5 +266,37 @@ export async function uploadMyAvatar(req: Request, res: Response): Promise<void>
 
     const details = typeof error === "string" ? error : (error ? JSON.stringify(error) : null);
     throw new AppError(500, `Unknown upload error: ${details}`);
+  }
+}
+
+export async function registerFcmToken(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const body = readBody<{ token?: unknown }>(req.body);
+
+    if (typeof body.token !== "string" || body.token.trim().length === 0) {
+      throw new AppError(400, "token is required");
+    }
+
+    await addFcmToken(userId, body.token);
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    throwAppError(error, "Failed to register FCM token");
+  }
+}
+
+export async function unregisterFcmToken(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const body = readBody<{ token?: unknown }>(req.body);
+
+    if (typeof body.token !== "string" || body.token.trim().length === 0) {
+      throw new AppError(400, "token is required");
+    }
+
+    await removeFcmToken(userId, body.token);
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    throwAppError(error, "Failed to unregister FCM token");
   }
 }

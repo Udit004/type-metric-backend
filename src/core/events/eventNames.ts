@@ -10,6 +10,8 @@ export const Events = {
 
     TYPING_COMPLETED: "typing.completed",
     
+    FRIEND_REQUEST_SENT: "friend.request_sent",
+
     SYSTEM_ACTIVITY: "system.activity",
     SYSTEM_ERROR: "system.error",
 

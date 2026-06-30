@@ -1,5 +1,7 @@
 import { WebSocketServer } from "ws";
 import { createNotification } from "../../modules/notifications/service.js";
+import { messaging } from "../../config/firebaseAdmin.js";
+import User from "../../models/User.model.js";
 
 export class NotificationGateway {
   private static wss: WebSocketServer | null = null;
@@ -33,6 +35,41 @@ export class NotificationGateway {
           }));
         }
       });
+    }
+
+    // 3. Send FCM push notification
+    try {
+      const user = await User.findById(userId).select("fcmTokens").lean();
+      if (user && user.fcmTokens && user.fcmTokens.length > 0) {
+        const payload = {
+          notification: {
+            title: "Typemetric",
+            body: notificationData.message,
+          },
+          data: {
+            type: notificationData.type,
+            metadata: JSON.stringify(notificationData.metadata || {}),
+          },
+          tokens: user.fcmTokens,
+        };
+        const response = await messaging.sendEachForMulticast(payload);
+        if (response.failureCount > 0) {
+          const failedTokens: string[] = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(user.fcmTokens[idx]);
+            }
+          });
+          if (failedTokens.length > 0) {
+            // Optional: Remove invalid tokens from the database
+            await User.findByIdAndUpdate(userId, {
+              $pullAll: { fcmTokens: failedTokens },
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to send FCM push notification:", error);
     }
 
     return notification;

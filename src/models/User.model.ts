@@ -19,6 +19,7 @@ export interface IUser {
 	gamificationVersion: number;
 	usernameUpdatedAt: Date | null;
 	usernameChangeCount: number;
+	fcmTokens: string[];
 }
 
 interface IUserMethods {
@@ -128,6 +129,10 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
 			required: true,
 			default: 0,
 			min: 0,
+		},
+		fcmTokens: {
+			type: [String],
+			default: [],
 		},
 	},
 	{
