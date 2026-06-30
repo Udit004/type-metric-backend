@@ -1,10 +1,10 @@
-import { HydratedDocument, Model, Schema, model } from "mongoose";
+import { HydratedDocument, Model, Schema, model, Types } from "mongoose";
 
 export type FriendshipStatus = "pending" | "accepted";
 
 export interface IFriendship {
-  requester: Schema.Types.ObjectId;
-  recipient: Schema.Types.ObjectId;
+  requester: Types.ObjectId;
+  recipient: Types.ObjectId;
   pairKey: string;
   status: FriendshipStatus;
   createdAt: Date;
