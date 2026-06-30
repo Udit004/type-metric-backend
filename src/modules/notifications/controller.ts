@@ -21,7 +21,7 @@ export async function getMyNotifications(req: Request, res: Response): Promise<v
 export async function markAsRead(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params;
-    await NotificationService.markNotificationAsRead(id);
+    await NotificationService.markNotificationAsRead(id as string);
     res.status(200).json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to mark as read";
