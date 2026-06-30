@@ -6,7 +6,7 @@ export interface ActivityLogData {
   type: 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
   message: string;
   timestamp: Date;
-  metadata?: any;
+  metadata?: Record<string, any>;
 }
 
 export class ActivityQueueHandler {

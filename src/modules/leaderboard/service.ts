@@ -225,10 +225,46 @@ export async function buildLeaderboardEntries(
   );
 }
 
+function haveLeaderboardsChanged(
+  oldEntries: any[],
+  newEntries: any[]
+): boolean {
+  if (oldEntries.length !== newEntries.length) return true;
+
+  for (let i = 0; i < newEntries.length; i++) {
+    const old = oldEntries[i];
+    const current = newEntries[i];
+
+    if (
+      old.rank !== current.rank ||
+      old.userId !== current.userId ||
+      old.bestWpm !== current.bestWpm ||
+      old.accuracy !== current.accuracy
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function rebuildLeaderboardSnapshot(
   board: LeaderboardBoard
 ): Promise<LeaderboardResponse> {
   const rankedEntries = rankLeaderboardEntries(await buildLeaderboardEntries(board));
+  
+  const previousSnapshot = await LeaderboardSnapshot.findOne({ 
+    board, 
+    window: LEADERBOARD_WINDOW 
+  }).lean();
+
+  const entriesChanged = !previousSnapshot || 
+    haveLeaderboardsChanged(previousSnapshot.entries || [], rankedEntries);
+
+  if (!entriesChanged) {
+    return toResponse(previousSnapshot as ILeaderboardSnapshot);
+  }
+
   const generatedAt = new Date();
 
   const snapshotDoc = {

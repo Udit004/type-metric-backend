@@ -29,18 +29,21 @@ eventBus.on(
 
 eventBus.on(
     Events.TYPING_COMPLETED,
-    async (data: { userId: string, sessionId: string, wpm?: number }) => {
+    async (data: { userId: string, sessionId: string, wpm?: number, accuracy?: number }) => {
         try {
             const user = await User.findById(data.userId).lean();
             if (user) {
-                const username = (user as any).displayName || (user as any).name || 'Unknown User';
-                const email = (user as any).email || 'No email';
+                const fullName = user.name;
+                const username = user.username;
+                const email = user.email;
                 const wpmText = data.wpm ? ` with speed: ${data.wpm} WPM` : '';
+                const accText = data.accuracy ? `, accuracy: ${data.accuracy}%` : '';
+
                 await ActivityQueueHandler.enqueueActivity({
                     type: 'INFO',
-                    message: `Typing session completed by ${username} (${email})${wpmText}.`,
+                    message: `Typing session completed by ${fullName} (@${username}) [${email}]${wpmText}${accText}.`,
                     timestamp: new Date(),
-                    metadata: { sessionId: data.sessionId, wpm: data.wpm }
+                    metadata: { sessionId: data.sessionId, wpm: data.wpm, accuracy: data.accuracy }
                 });
             }
         } catch (error) {

@@ -53,6 +53,8 @@ export async function createTypingSession(
   eventBus.emit(Events.TYPING_COMPLETED, {
     userId: payload.userId,
     sessionId: String(session._id),
+    wpm: payload.wpm,
+    accuracy: payload.accuracy,
   });
 
   return {
